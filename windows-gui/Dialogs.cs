@@ -164,7 +164,7 @@ namespace TT
         public ImportDialog() : base("وارد کردن لینک", 460, 340)
         {
             Subtitle = "";
-            var desc = "لینک \u200Ett://\u200E کاربر را از پنل مدیریت کپی کنید. اگر در کلیپ‌بورد باشد، خودکار همین‌جا قرار می‌گیرد.";
+            var desc = "لینک \u202Att://\u202C کاربر را از پنل مدیریت کپی کنید. اگر در کلیپ‌بورد باشد، خودکار همین‌جا قرار می‌گیرد.";
             Page.Over = g =>
             {
                 Gfx.Text(g, desc, FontKit.Px(13f), Theme.Muted, new RectangleF(24, 52, LW - 48, 44), Al.Right, true, true, StringAlignment.Near);
@@ -191,14 +191,14 @@ namespace TT
             {
                 var c = (Clipboard.GetText() ?? "").Trim();
                 if (c.StartsWith("tt://", StringComparison.OrdinalIgnoreCase)) { tb.Text = c; return; }
-                if (explicitly) { error = "در کلیپ‌بورد لینک \u200Ett://\u200E پیدا نشد."; Canvas.Invalidate(); }
+                if (explicitly) { error = "در کلیپ‌بورد لینک \u202Att://\u202C پیدا نشد."; Canvas.Invalidate(); }
             }
             catch { }
         }
 
         void Save()
         {
-            if (!Link.StartsWith("tt://", StringComparison.OrdinalIgnoreCase)) { error = "لینک باید با \u200Ett://\u200E شروع شود."; Canvas.Invalidate(); tb.Focus(); return; }
+            if (!Link.StartsWith("tt://", StringComparison.OrdinalIgnoreCase)) { error = "لینک باید با \u202Att://\u202C شروع شود."; Canvas.Invalidate(); tb.Focus(); return; }
             DialogResult = DialogResult.OK;
             Close();
         }
