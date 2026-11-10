@@ -8,7 +8,7 @@
     <RootNamespace>TT</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>1.0.0</Version>
+    <Version>2.0.0</Version>
     <Product>TrustTunnel for Windows (Sabi VPN)</Product>
     <AssemblyTitle>TrustTunnel</AssemblyTitle>
     <Company>sabi-karami</Company>
@@ -16,6 +16,9 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <DebugType>none</DebugType>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="fonts/*.ttf" LogicalName="fonts.%(Filename)%(Extension)" />
+  </ItemGroup>
   <ItemGroup>
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />

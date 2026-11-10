@@ -76,6 +76,17 @@ namespace TT
             return set;
         }
 
+        public static int ServerPort()
+        {
+            foreach (var a in Addresses())
+            {
+                int c = a.LastIndexOf(':');
+                int b = a.LastIndexOf(']');
+                if (c > 0 && c > b && int.TryParse(a.Substring(c + 1), out var port) && port > 0 && port < 65536) return port;
+            }
+            return 443;
+        }
+
         public static string ReadBypass()
         {
             if (!File.Exists(Bypass)) File.WriteAllText(Bypass, DefaultBypass, Utf8);

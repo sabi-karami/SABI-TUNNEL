@@ -33,68 +33,127 @@ jobs:
           Expand-Archive client.zip -DestinationPath pkg/TrustTunnel -Force
           Copy-Item build/TrustTunnel.exe, build/TrustTunnel.exe.config pkg/TrustTunnel/
           Copy-Item windows-gui/package/* pkg/TrustTunnel/
+          Copy-Item windows-gui/fonts/OFL.txt pkg/TrustTunnel/OFL-Vazirmatn.txt
           Get-ChildItem pkg/TrustTunnel | Format-Table Name, Length
 
-      - name: Live test against the real server
+      - name: Live UI test against the real server
         if: env.TT_TEST_LINK != ''
-        timeout-minutes: 8
+        timeout-minutes: 10
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'
           Add-Type -AssemblyName System.Windows.Forms, System.Drawing, UIAutomationClient, UIAutomationTypes
+          Add-Type @'
+          using System; using System.Runtime.InteropServices;
+          public static class M {
+            [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
+            [DllImport("user32.dll")] public static extern void mouse_event(int f,int x,int y,int d,IntPtr e);
+            [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+            [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h,int m,IntPtr w,IntPtr l);
+          }
+          '@
+          $shots = "$env:GITHUB_WORKSPACE\shots"
+          New-Item -ItemType Directory $shots -Force | Out-Null
+          $R = [ordered]@{}
           function Shot($name) {
             $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
             $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
             $g = [System.Drawing.Graphics]::FromImage($bmp)
             $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
-            $bmp.Save("$env:GITHUB_WORKSPACE\shots\$name.png"); $g.Dispose(); $bmp.Dispose()
+            $bmp.Save("$shots\$name.png"); $g.Dispose(); $bmp.Dispose()
+            Write-Host "shot: $name"
           }
-          function Ip { $r = & curl.exe -s --max-time 15 -H 'Connection: close' https://api.ipify.org; if ($r) { $r.Trim() } else { 'error' } }
-          New-Item -ItemType Directory "$env:GITHUB_WORKSPACE\shots" -Force | Out-Null
+          function Ip { $r = & curl.exe -s --max-time 12 -H 'Connection: close' https://api.ipify.org; if ($r) { $r.Trim() } else { 'error' } }
+          function Gui { Get-Process TrustTunnel -ErrorAction SilentlyContinue | Select-Object -First 1 }
+          function Client { [bool](Get-Process trusttunnel_client -ErrorAction SilentlyContinue) }
+          function GuiCmd($c) { Start-Process .\TrustTunnel.exe -ArgumentList "--$c"; Start-Sleep -Milliseconds 2200 }
+          function Wins {
+            $p = Gui; if (-not $p) { return @() }
+            $cond = New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::ProcessIdProperty), $p.Id
+            @([System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $cond))
+          }
+          function MainWin { Wins | Where-Object { $_.Current.Name -like 'TrustTunnel*Sabi*' } | Select-Object -First 1 }
+          function CloseDialogs {
+            foreach ($w in Wins) { if ($w.Current.Name -notlike 'TrustTunnel*Sabi*') { Write-Host "closing window '$($w.Current.Name)'"; [M]::PostMessage([IntPtr]$w.Current.NativeWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null } }
+            Start-Sleep 1
+          }
+          function ClickMain($lx, $ly, $label) {
+            $w = MainWin
+            if (-not $w) { Write-Host "main window not found for $label"; return $false }
+            $r = $w.Current.BoundingRectangle; $s = $r.Width / 380.0
+            [M]::SetForegroundWindow([IntPtr]$w.Current.NativeWindowHandle) | Out-Null; Start-Sleep -Milliseconds 300
+            $x = [int]($r.X + $lx * $s); $y = [int]($r.Y + $ly * $s)
+            [M]::SetCursorPos($x, $y); Start-Sleep -Milliseconds 250
+            [M]::mouse_event(2,0,0,0,[IntPtr]::Zero); Start-Sleep -Milliseconds 60; [M]::mouse_event(4,0,0,0,[IntPtr]::Zero)
+            Write-Host "clicked $label at $x,$y (window $($r.X),$($r.Y) $($r.Width)x$($r.Height), scale $s)"
+            [M]::SetCursorPos(5, 5)
+            return $true
+          }
+          function Windows($label) { Write-Host "--- windows ($label) ---"; foreach ($w in Wins) { $r = $w.Current.BoundingRectangle; Write-Host ("  '{0}'  {1},{2} {3}x{4}" -f $w.Current.Name, $r.X, $r.Y, $r.Width, $r.Height) } }
+
           Set-Location pkg/TrustTunnel
-          $before = Ip; Write-Host "IP before: $before"
+          $R.before = Ip; Write-Host "IP before: $($R.before)"
+
+          # ---------- A: first run, no settings -> import dialog
+          Start-Process .\TrustTunnel.exe; Start-Sleep 7
+          Windows 'first run'; Shot '01-first-run-import'
+          CloseDialogs; Start-Sleep 1; Shot '02-no-config'
+          GuiCmd 'quit'; Start-Sleep 3
+          $R.quit_first_run = -not (Gui)
+          Get-Process TrustTunnel -ErrorAction SilentlyContinue | Stop-Process -Force
+
+          # ---------- B: configured, idle
           .\setup_wizard.exe --mode non-interactive --deeplink $env:TT_TEST_LINK --settings trusttunnel_client.toml | Out-Null
           $t = [IO.File]::ReadAllText("$PWD\trusttunnel_client.toml") -replace '(?m)^killswitch_enabled = .*', 'killswitch_enabled = false'
           [IO.File]::WriteAllText("$PWD\trusttunnel_client.toml", $t)
-          [IO.File]::WriteAllText("$PWD\gui.ini", "autoconnect=1`r`nname=Sabi VPN CI test`r`n")
-          Start-Process .\TrustTunnel.exe
-          Start-Sleep 30
-          Shot 'connected'
-          Start-Sleep 5
-          Shot 'connected2'
-          $after = Ip; Write-Host "IP while connected: $after"
-          $running = [bool](Get-Process trusttunnel_client -ErrorAction SilentlyContinue)
-          Write-Host "client running: $running"
-          # press the big button (Disconnect) through UI Automation -> exercises the graceful Ctrl+C stop
-          Add-Type @'
-          using System; using System.Runtime.InteropServices;
-          public static class M { [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
-            [DllImport("user32.dll")] public static extern void mouse_event(int f,int x,int y,int d,IntPtr e); }
-          '@
-          $p = Get-Process TrustTunnel -ErrorAction SilentlyContinue | Select-Object -First 1
-          $btn = $null
-          if ($p -and $p.MainWindowHandle -ne 0) {
-            $w = [System.Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle)
-            foreach ($e in $w.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)) {
-              $r = $e.Current.BoundingRectangle
-              if ($r.Width -ge 250 -and $r.Height -ge 40 -and $r.Height -le 70) { $btn = $r }
-            }
-          }
-          if ($btn) { $x=[int]($btn.X+$btn.Width/2); $y=[int]($btn.Y+$btn.Height/2); [M]::SetCursorPos($x,$y); Start-Sleep -m 200; [M]::mouse_event(2,0,0,0,[IntPtr]::Zero); [M]::mouse_event(4,0,0,0,[IntPtr]::Zero); Write-Host "clicked disconnect at $x,$y" } else { Write-Host 'button not found' }
-          Start-Sleep 12
-          Shot 'disconnected'
-          $stillRunning = [bool](Get-Process trusttunnel_client -ErrorAction SilentlyContinue)
-          $final = Ip
-          Write-Host "client still running after disconnect: $stillRunning"
-          Write-Host "IP after disconnect: $final"
-          Copy-Item trusttunnel_last.log "$env:GITHUB_WORKSPACE\shots\" -ErrorAction SilentlyContinue
-          Write-Host '--- processes ---'; Get-Process TrustTunnel, trusttunnel_client -ErrorAction SilentlyContinue | Format-Table Id, ProcessName, MainWindowHandle, MainWindowTitle, SessionId | Out-String | Write-Host
-          Write-Host '--- routes ---'; route print -4 | Select-Object -First 40 | Out-String | Write-Host
-          Write-Host '--- GUI log ---'; Get-Content trusttunnel_last.log -ErrorAction SilentlyContinue | Select-Object -Last 80 | Out-String | Write-Host
-          Get-ChildItem . | Format-Table Name, Length | Out-String | Write-Host
-          "before=$before`nconnected=$after`nclient_running=$running`nstill_running_after_stop=$stillRunning`nafter=$final" | Set-Content "$env:GITHUB_WORKSPACE\shots\result.txt"
+          [IO.File]::WriteAllText("$PWD\gui.ini", "autoconnect=0`r`nname=Sabi VPN`r`n")
+          Start-Process .\TrustTunnel.exe; Start-Sleep 6
+          Windows 'idle'; Shot '03-off'
+          GuiCmd 'settings'; Start-Sleep 1; Shot '04-settings'
+          GuiCmd 'bypass'; Start-Sleep 1; Windows 'bypass'; Shot '05-bypass'; CloseDialogs
+          GuiCmd 'home'; Start-Sleep 1
+
+          # ---------- C: connect with a real mouse click on the big button
+          $R.click_connect = ClickMain 190 417 'connect'
+          Start-Sleep -Milliseconds 1500; Shot '06-connecting'
+          Start-Sleep 22
+          $R.connected_ip = Ip; Write-Host "IP while connected: $($R.connected_ip)"
+          $R.client_running = Client
+          Shot '07-on'
+          $dl = Start-Job { & curl.exe -s -o NUL --max-time 25 'https://speed.cloudflare.com/__down?bytes=60000000' }
+          Start-Sleep 9; Shot '08-on-traffic'
+          Wait-Job $dl -Timeout 20 | Out-Null; Remove-Job $dl -Force
+          GuiCmd 'settings'; Start-Sleep 1; Shot '09-settings-connected'
+          GuiCmd 'log'; Start-Sleep 1; Windows 'log'; Shot '10-log'; CloseDialogs
+          GuiCmd 'home'; Start-Sleep 1
+
+          # ---------- D: disconnect with a real click
+          $R.click_disconnect = ClickMain 190 417 'disconnect'
+          Start-Sleep -Milliseconds 700; Shot '11-stopping'
+          Start-Sleep 9; Shot '12-off-again'
+          $R.client_after_disconnect = Client
+          $R.ip_after_disconnect = Ip
+
+          # ---------- E: command-line toggle, orb click, then --quit while connected
+          GuiCmd 'toggle'; Start-Sleep 18
+          $R.toggle_ip = Ip; $R.toggle_client = Client
+          Shot '13-toggle-on'
+          GuiCmd 'quit'; Start-Sleep 12
+          $R.gui_after_quit = [bool](Gui); $R.client_after_quit = Client
+          $R.ip_after_quit = Ip
+          Shot '14-after-quit'
+
+          # ---------- report
+          Copy-Item trusttunnel_last.log $shots -ErrorAction SilentlyContinue
+          if (Test-Path trusttunnel_gui_error.log) { $R.crash_log = $true; Copy-Item trusttunnel_gui_error.log $shots; Write-Host '--- CRASH LOG ---'; Get-Content trusttunnel_gui_error.log | Write-Host } else { $R.crash_log = $false }
+          Write-Host '--- GUI log (tail) ---'; Get-Content trusttunnel_last.log -ErrorAction SilentlyContinue | Select-Object -Last 60 | Out-String | Write-Host
+          Write-Host '--- routes ---'; route print -4 | Select-Object -First 30 | Out-String | Write-Host
+          ($R.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join "`n" | Set-Content "$shots\result.txt"
+          Get-Content "$shots\result.txt" | Write-Host
           Get-Process TrustTunnel, trusttunnel_client -ErrorAction SilentlyContinue | Stop-Process -Force
-          Remove-Item trusttunnel_client.toml, gui.ini, trusttunnel_last.log -ErrorAction SilentlyContinue
+          Remove-Item trusttunnel_client.toml, gui.ini, trusttunnel_last.log, trusttunnel_gui_error.log -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory "$shots\bin" -Force | Out-Null
+          Copy-Item "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe", "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe.config" "$shots\bin\"
 
       - name: Publish test results to ci-results branch
         if: always() && env.TT_TEST_LINK != ''
