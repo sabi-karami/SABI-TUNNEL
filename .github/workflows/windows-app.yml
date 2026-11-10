@@ -134,10 +134,20 @@ jobs:
           $R.connected_ip = Ip; Write-Host "IP while connected: $($R.connected_ip)"
           $R.client_running = Client
           Shot '07-on'
-          $dl = Start-Job { & curl.exe -s -o NUL --max-time 25 'https://speed.cloudflare.com/__down?bytes=60000000' }
+          $dl = Start-Job { & curl.exe -s -o NUL --limit-rate 3000k --max-time 25 'https://speed.cloudflare.com/__down?bytes=60000000' }
           Start-Sleep 9; Shot '08-on-traffic'
           Wait-Job $dl -Timeout 20 | Out-Null; Remove-Job $dl -Force
           GuiCmd 'settings'; Start-Sleep 1; Shot '09-settings-connected'
+          # switch to HTTP/3 with a real click while connected -> the app must reconnect on its own
+          $R.click_http3 = ClickMain 105 113 'HTTP/3 segment'
+          Start-Sleep 24
+          $R.http3_saved = [bool](Select-String -Path trusttunnel_client.toml -Pattern 'upstream_protocol = "http3"' -Quiet)
+          $R.http3_ip = Ip; $R.http3_client = Client
+          GuiCmd 'home'; Start-Sleep 1; Shot '09b-http3'
+          GuiCmd 'settings'; Start-Sleep 1
+          [void](ClickMain 275 113 'HTTP/2 segment'); Start-Sleep 20
+          $R.http2_saved = [bool](Select-String -Path trusttunnel_client.toml -Pattern 'upstream_protocol = "http2"' -Quiet)
+          $R.http2_back_ip = Ip
           GuiCmd 'log'; Start-Sleep 1; Windows 'log'; Shot '10-log'; CloseDialogs
           GuiCmd 'home'; Start-Sleep 1
 
@@ -152,7 +162,7 @@ jobs:
           $R.click_orb = ClickMain 190 234 'orb'
           Start-Sleep 20
           $R.orb_ip = Ip; $R.orb_client = Client
-          $dl = Start-Job { & curl.exe -s -o NUL --max-time 20 'https://speed.cloudflare.com/__down?bytes=40000000' }
+          $dl = Start-Job { & curl.exe -s -o NUL --limit-rate 1500k --max-time 20 'https://speed.cloudflare.com/__down?bytes=40000000' }
           Start-Sleep 7; Shot '13-orb-on-traffic'
           Wait-Job $dl -Timeout 15 | Out-Null; Remove-Job $dl -Force
           GuiCmd 'toggle'; Start-Sleep 9

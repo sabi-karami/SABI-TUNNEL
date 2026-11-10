@@ -279,7 +279,10 @@ namespace TT
             Gfx.Card(g, w.B, 14, (int)(10 + 8 * w.HoverT));
             var tr = RectangleF.Inflate(w.B, -12, 0);
             Gfx.Text(g, label, FontKit.Px(11f), Theme.Muted, new RectangleF(tr.X, w.B.Y + 8, tr.Width, 18));
-            var vf = FontKit.Px(value != null && value.Length > 15 ? 11.5f : 14f, 700);
+            // shrink-to-fit so a full IPv4 address (or "123.4 MB") never gets an ellipsis
+            float px = 14f;
+            var vf = FontKit.Px(px, 700);
+            while (px > 10.5f && Gfx.Measure(g, value, vf, 10000, !latin).Width > tr.Width + 4) { px -= 0.5f; vf = FontKit.Px(px, 700); }
             Gfx.Text(g, value, vf, vc, new RectangleF(tr.X, w.B.Y + 26, tr.Width, 24), Al.Right, !latin);
             if (icon != null && w.HoverT > 0.02f) icon(g, new RectangleF(w.B.X + 10, w.B.Y + 10, 12, 12), Theme.A(Theme.Muted, (int)(255 * w.HoverT)));
         }
@@ -293,8 +296,9 @@ namespace TT
 
         void PaintTilePing(Graphics g, Custom w)
         {
-            string v = pingMs >= 0 ? pingMs + " ms" : "—";
-            var c = pingMs < 0 ? Theme.Text : pingMs < 150 ? Theme.On1 : pingMs < 300 ? Theme.Wait1 : Theme.Danger;
+            bool live = pingMs >= 0 && (state == VState.On || state == VState.Reconnecting);
+            string v = live ? pingMs + " ms" : "—";
+            var c = !live ? Theme.Text : pingMs < 150 ? Theme.On1 : pingMs < 300 ? Theme.Wait1 : Theme.Danger;
             Tile(g, w, "پینگ سرور", v, c, true);
         }
 
@@ -1001,7 +1005,7 @@ namespace TT
                 case VState.NoConfig:
                     orbWord = "بدون سرور"; orbHint = "لینک را وارد کنید"; n1 = Theme.Idle; n2 = Theme.Idle;
                     Btn("وارد کردن لینک", PillStyle.Primary, true, (g, r, c) => Glyph.Link(g, r, c, 2f));
-                    sub = sub ?? "لینک tt:// را از پنل کپی کنید"; break;
+                    sub = sub ?? "لینک \u200Ett://\u200E را از پنل کپی کنید"; break;
                 case VState.Connecting:
                     orbWord = "در حال اتصال"; orbHint = "لطفاً صبر کنید"; n1 = Theme.Wait1; n2 = Theme.Wait2; spin = true;
                     Btn("لغو", PillStyle.Wait, true, null);
