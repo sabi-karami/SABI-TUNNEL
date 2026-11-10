@@ -154,14 +154,16 @@ tr:last-child td{border-bottom:0}
 <!-- link modal -->
 <div class="modal-bg" id="m_link"><div class="modal">
   <h3>لینک اتصال <span id="ml_name" class="mono"></span></h3>
-  <div style="color:var(--mute);font-size:12.5px">در اپ TrustTunnel: Add Server ← Import / Paste، یا QR را اسکن کنید.</div>
+  <div style="color:var(--mute);font-size:12.5px">در اپ TrustTunnel: Add Server ← Import / Paste، یا QR را اسکن کنید. ساده‌تر: «صفحه‌ی اشتراک» را برای کاربر بفرستید.</div>
   <label>پروتکل</label>
   <div class="seg" id="ml_proto"><button data-v="http2" class="on">HTTP/2 (پایدارتر)</button><button data-v="http3">QUIC / HTTP3 (سریع‌تر)</button></div>
   <label>آدرس</label>
   <div class="seg" id="ml_addr"><button data-v="dual" class="on">IPv4 + IPv6</button><button data-v="v4">فقط IPv4</button><button data-v="v6">فقط IPv6</button><button data-v="domain">دامنه</button></div>
   <div class="qr" id="ml_qr"></div>
   <div class="linkbox mono" id="ml_link"></div>
-  <div class="foot"><button class="pri" onclick="copyLink()">کپی لینک</button><button class="ghost" onclick="closeM('m_link')">بستن</button></div>
+  <label>صفحه‌ی اشتراک برای کاربر (QR، دکمه‌ی افزودن، مصرف و دانلود برنامه‌ها)</label>
+  <div class="linkbox mono" id="ml_share"></div>
+  <div class="foot"><button class="pri" onclick="copyLink()">کپی لینک</button><button class="ghost" onclick="copyShare()">کپی صفحه‌ی اشتراک</button><button class="ghost" onclick="closeM('m_link')">بستن</button></div>
 </div></div>
 
 <!-- add modal -->
@@ -292,7 +294,9 @@ document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>
 function segVal(id){return $('#'+id+' .on').dataset.v}
 document.querySelectorAll('.seg').forEach(sg=>sg.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;sg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));if(LINKU)loadLink()}));
 async function openLink(n){LINKU=n;$('#ml_name').textContent=n;$('#ml_qr').innerHTML='';$('#ml_link').textContent='...';openM('m_link');loadLink()}
-async function loadLink(){try{const r=await api(`/api/users/${encodeURIComponent(LINKU)}/link?protocol=${segVal('ml_proto')}&addr=${segVal('ml_addr')}`);$('#ml_qr').innerHTML=r.qr_svg;$('#ml_link').textContent=r.link}catch(e){toast(e.message)}}
+async function loadLink(){try{const r=await api(`/api/users/${encodeURIComponent(LINKU)}/link?protocol=${segVal('ml_proto')}&addr=${segVal('ml_addr')}`);$('#ml_qr').innerHTML=r.qr_svg;$('#ml_link').textContent=r.link;$('#ml_share').textContent=r.share_url||''}catch(e){toast(e.message)}}
+async function copyShare(){await copyText($('#ml_share').textContent,'آدرس صفحه کپی شد')}
+async function copyText(t,msg){try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()}toast(msg)}
 async function copyLink(){const t=$('#ml_link').textContent;try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()}toast('لینک کپی شد')}
 function openAdd(){['a_name','a_note'].forEach(i=>$('#'+i).value='');$('#a_quota').value=0;$('#a_days').value=30;openM('m_add')}
 async function addUser(){try{const u=await api('/api/users',{method:'POST',body:{name:$('#a_name').value,note:$('#a_note').value,quota_gb:+$('#a_quota').value||0,days:+$('#a_days').value||0}});closeM('m_add');toast('کاربر ساخته شد');await refresh();openLink(u.name)}catch(e){toast(e.message)}}

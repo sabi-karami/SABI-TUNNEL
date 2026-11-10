@@ -19,6 +19,7 @@ jobs:
     env:
       TT_TEST_LINK: ${{ secrets.TT_TEST_LINK }}
       TT_TEST_LINK2: ${{ secrets.TT_TEST_LINK2 }}
+      TT_TEST_SHARE: ${{ secrets.TT_TEST_SHARE }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,7 +49,7 @@ jobs:
 
       - name: Live UI test against the real server
         if: env.TT_TEST_LINK != ''
-        timeout-minutes: 10
+        timeout-minutes: 16
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'
@@ -128,6 +129,13 @@ jobs:
           function Servers { @(Get-ChildItem servers -Filter *.toml -ErrorAction SilentlyContinue).Count }
           function Windows($label) { Write-Host "--- windows ($label) ---"; foreach ($w in Wins) { Write-Host ("  '{0}'  {1},{2} {3}x{4}" -f $w.Name, $w.X, $w.Y, $w.W, $w.Hh) } }
 
+          # ---------- panel share page, rendered by Edge (phone-sized)
+          if ($env:TT_TEST_SHARE) {
+            $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+            & $edge --headless=new --disable-gpu --hide-scrollbars --window-size=420,1640 --force-device-scale-factor=2 "--screenshot=$shots\30-share-page.png" $env:TT_TEST_SHARE 2>$null
+            Start-Sleep 6
+            $R.share_page_shot = Test-Path "$shots\30-share-page.png"
+          }
           # ---------- install with the real Setup.exe, then test from Program Files
           $p = Start-Process "$env:GITHUB_WORKSPACE\setup\TrustTunnel-Setup.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/TASKS=desktopicon',"/LOG=$shots\setup.log" -Wait -PassThru
           $app = "$env:ProgramFiles\TrustTunnel"

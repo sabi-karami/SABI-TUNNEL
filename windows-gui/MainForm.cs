@@ -695,7 +695,7 @@ namespace TT
             using (var d = new ImportDialog(prefill))
             {
                 if (d.ShowFor(this) != DialogResult.OK) return false;
-                link = d.Link.TrimEnd('/');
+                link = DeepLink.Normalize(d.Link);
             }
             Cursor = Cursors.WaitCursor;
             try { err = Cfg.ImportLink(link); } finally { Cursor = Cursors.Default; }

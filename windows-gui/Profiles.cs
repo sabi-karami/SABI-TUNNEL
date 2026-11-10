@@ -128,8 +128,7 @@ namespace TT
                 if (!File.Exists(PendingPath)) return null;
                 var s = File.ReadAllText(PendingPath).Trim();
                 File.Delete(PendingPath);
-                if (s.StartsWith("tt:", StringComparison.OrdinalIgnoreCase) && !s.StartsWith("tt://", StringComparison.OrdinalIgnoreCase))
-                    s = "tt://" + s.Substring(3).TrimStart('/');
+                s = DeepLink.Normalize(s);
                 return s.Length > 0 ? s : null;
             }
             catch { return null; }

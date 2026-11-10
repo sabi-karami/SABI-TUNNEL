@@ -23,7 +23,7 @@ from pathlib import Path
 import qrcode
 import qrcode.image.svg
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from deeplink import make_deeplink
@@ -35,6 +35,12 @@ METRICS_URL = os.environ.get("TT_METRICS", "http://127.0.0.1:1987")
 USERS_PATH = DATA_DIR / "users.json"
 STATS_PATH = DATA_DIR / "stats.json"
 INDEX_HTML = Path(__file__).with_name("index.html")
+SHARE_HTML = Path(__file__).with_name("share.html")
+DOWNLOADS_DIR = DATA_DIR / "downloads"
+DOWNLOADS = [  # (file, title, note) - offered on the share page when present in DOWNLOADS_DIR
+    ("TrustTunnel-Setup.exe", "ویندوز — نصب‌کننده", "Windows 10/11 · نصب با یک کلیک، میان‌بر و حذف از Apps"),
+    ("TrustTunnel-Windows-GUI.zip", "ویندوز — نسخه‌ی zip", "بدون نصب؛ پوشه را باز و TrustTunnel.exe را اجرا کنید"),
+]
 POLL_SECONDS = 20
 HISTORY_POINTS = 180
 SESSION_TTL = 12 * 3600
@@ -515,7 +521,91 @@ async def user_link(request: Request, name: str, protocol: str = "http2", addr: 
         raise HTTPException(404, "not found")
     link = build_link(name, "http3" if protocol == "http3" else "http2", addr)
     img = qrcode.make(link, image_factory=qrcode.image.svg.SvgPathImage, box_size=8, border=2)
-    return {"link": link, "qr_svg": img.to_string(encoding="unicode")}
+    return {"link": link, "qr_svg": img.to_string(encoding="unicode"), "share_url": share_url(name)}
+
+
+# ---------------------------------------------------------------- public share page (per user)
+# /s/<name>/<token>: QR, "add to app" button, usage and download links for the end user.
+# The token is derived from the user's password, so "new password" also revokes the page.
+
+def share_token(name: str) -> str:
+    u = S.users[name]
+    msg = f"share:{name}:{u['password']}".encode()
+    return hmac.new(bytes.fromhex(S.cfg["secret"]), msg, "sha256").hexdigest()[:24]
+
+
+def share_url(name: str) -> str:
+    host = S.cfg.get("panel_host") or S.cfg.get("tt_host")
+    return f"https://{host}/s/{name}/{share_token(name)}"
+
+
+def _share_user(name: str, token: str):
+    if name == SYSTEM_USER or name not in S.users or not re.fullmatch(r"[0-9a-f]{24}", token or ""):
+        raise HTTPException(404, "not found")
+    if not hmac.compare_digest(share_token(name), token):
+        raise HTTPException(404, "not found")
+    return S.users[name]
+
+
+def _fmt_bytes(b: float) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if b < 1024 or unit == "TB":
+            return f"{b:.0f} {unit}" if unit in ("B", "KB") else f"{b:.1f} {unit}"
+        b /= 1024
+    return ""
+
+
+@app.get("/s/{name}/{token}", response_class=HTMLResponse)
+async def share_page(name: str, token: str, p: str = "http2"):
+    import html
+    u = _share_user(name, token)
+    proto = "http3" if p == "http3" else "http2"
+    link = build_link(name, proto, "dual")
+    qr = qrcode.make(link, image_factory=qrcode.image.svg.SvgPathImage, box_size=8, border=2).to_string(encoding="unicode")
+    used = u.get("used_in", 0) + u.get("used_out", 0)
+    quota = u.get("quota_gb", 0) or 0
+    exp = u.get("expires", 0) or 0
+    now = time.time()
+    if not u.get("enabled"):
+        state, cls = "غیرفعال" + ({"quota": " (حجم تمام شد)", "expired": " (منقضی شد)"}.get(u.get("disabled_reason"), "")), "bad"
+    else:
+        state, cls = "فعال", "ok"
+    usage = _fmt_bytes(used) + (f" از {quota:g} GB" if quota else " (بدون محدودیت حجم)")
+    pct = min(100, used / (quota * 10**9) * 100) if quota else 0
+    if exp:
+        days = int((exp - now) // 86400)
+        expiry = time.strftime("%Y-%m-%d", time.gmtime(exp)) + (f" — {days} روز مانده" if days >= 0 else " — گذشته")
+    else:
+        expiry = "بدون تاریخ انقضا"
+    base = f"/s/{name}/{token}"
+    dl = []
+    for fn, title, note in DOWNLOADS:
+        f = DOWNLOADS_DIR / fn
+        if f.is_file():
+            size = _fmt_bytes(f.stat().st_size)
+            dl.append(f'<a class="dl" href="{base}/dl/{fn}"><b>{html.escape(title)}</b><span>{html.escape(note)} · {size}</span></a>')
+    page = SHARE_HTML.read_text(encoding="utf-8")
+    vals = {
+        "SERVER": html.escape(S.cfg.get("server_name") or "TrustTunnel"), "USER": html.escape(name),
+        "LINK": html.escape(link), "QR": qr, "STATE": state, "STATECLS": cls, "USAGE": html.escape(usage),
+        "PCT": f"{pct:.0f}", "EXPIRY": html.escape(expiry), "DOWNLOADS": "\n".join(dl),
+        "H2ON": "on" if proto == "http2" else "", "H3ON": "on" if proto == "http3" else "", "BASE": base,
+    }
+    for k, v in vals.items():
+        page = page.replace("{{" + k + "}}", v)
+    resp = HTMLResponse(page)
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    resp.headers["Content-Security-Policy"] = ("default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
+                                               "img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+    return resp
+
+
+@app.get("/s/{name}/{token}/dl/{fn}")
+async def share_download(name: str, token: str, fn: str):
+    _share_user(name, token)
+    if fn not in {d[0] for d in DOWNLOADS} or not (DOWNLOADS_DIR / fn).is_file():
+        raise HTTPException(404, "not found")
+    return FileResponse(DOWNLOADS_DIR / fn, filename=fn, media_type="application/octet-stream")
 
 
 class PasswordIn(BaseModel):

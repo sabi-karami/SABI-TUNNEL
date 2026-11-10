@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>{{SERVER}} · {{USER}}</title>
+<style>
+:root{--bg:#07090f;--bg2:#0d111b;--card:#121827cc;--line:#1f2940;--text:#e7ecf7;--mute:#8592ad;--acc:#4fd1c5;--acc2:#7c5cff;--ok:#34d399;--bad:#f87171}
+*{box-sizing:border-box}html,body{margin:0}
+body{font-family:Vazirmatn,"Segoe UI",Tahoma,system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.7;
+  background-image:radial-gradient(900px 500px at 90% -10%,#7c5cff26,transparent 60%),radial-gradient(800px 500px at -10% 110%,#4fd1c522,transparent 60%);background-attachment:fixed}
+.wrap{max-width:520px;margin:0 auto;padding:22px 16px 50px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.logo{width:44px;height:44px;border-radius:13px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:grid;place-items:center;box-shadow:0 0 30px #4fd1c555;flex:none}
+.logo svg{width:24px;height:24px}
+h1{font-size:18px;margin:0}.sub{color:var(--mute);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;margin-top:14px;backdrop-filter:blur(10px)}
+h2{font-size:15px;margin:0 0 10px}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:3px 11px;border-radius:99px;font-size:12.5px;background:#10241f;color:var(--ok);border:1px solid #1d4a3c}
+.pill.bad{background:#2a1418;color:var(--bad);border-color:#5a2530}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px;margin-top:10px}.kv span:nth-child(odd){color:var(--mute)}
+.bar{height:7px;background:#1a2236;border-radius:99px;overflow:hidden;margin-top:10px}.bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),var(--acc2))}
+.qr{background:#fff;border-radius:16px;padding:10px;margin:6px auto 12px;width:min(260px,100%);aspect-ratio:1}.qr svg{width:100%;height:100%;display:block}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;font:inherit;font-weight:700;border:0;border-radius:13px;padding:13px;cursor:pointer;text-decoration:none;margin-top:10px}
+.pri{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#061016}.ghost{background:#1b2338;color:var(--text)}
+.seg{display:flex;background:#0b0f19;border:1px solid var(--line);border-radius:11px;padding:3px;gap:3px;margin-bottom:12px}
+.seg a{flex:1;text-align:center;padding:6px;border-radius:8px;color:var(--mute);text-decoration:none;font-size:13px}.seg a.on{background:#1f2a44;color:var(--acc)}
+.linkbox{direction:ltr;font-family:ui-monospace,Menlo,Consolas,monospace;word-break:break-all;font-size:11.5px;background:#0b0f19;border:1px solid var(--line);border-radius:10px;padding:10px;max-height:84px;overflow:auto;color:#b9c4dc;margin-top:10px}
+.dl{display:block;background:#0f1525;border:1px solid var(--line);border-radius:13px;padding:11px 14px;margin-top:9px;color:var(--text);text-decoration:none}
+.dl:hover{border-color:var(--acc)}.dl b{display:block;font-size:14.5px}.dl span{color:var(--mute);font-size:12.5px}
+ol{margin:6px 0 0;padding-right:20px;color:#c9d2e6;font-size:14px}li{margin:3px 0}
+.muted{color:var(--mute);font-size:12.5px}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#1f2a44;border:1px solid var(--line);padding:9px 18px;border-radius:12px;opacity:0;transition:.2s;pointer-events:none}.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#061016" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
+    <div><h1>{{SERVER}}</h1><div class="sub">صفحه‌ی اتصال کاربر <b dir="ltr">{{USER}}</b></div></div>
+  </header>
+
+  <div class="card">
+    <span class="pill {{STATECLS}}">● {{STATE}}</span>
+    <div class="kv"><span>مصرف</span><span dir="auto">{{USAGE}}</span><span>اعتبار</span><span dir="auto">{{EXPIRY}}</span></div>
+    <div class="bar"><i style="width:{{PCT}}%"></i></div>
+  </div>
+
+  <div class="card">
+    <h2>افزودن به برنامه</h2>
+    <div class="seg"><a class="{{H2ON}}" href="{{BASE}}">HTTP/2 · پایدارتر</a><a class="{{H3ON}}" href="{{BASE}}?p=http3">HTTP/3 · سریع‌تر</a></div>
+    <div class="qr">{{QR}}</div>
+    <a class="btn pri" href="{{LINK}}">افزودن به TrustTunnel</a>
+    <button class="btn ghost" id="copy">کپی لینک</button>
+    <div class="linkbox" id="link">{{LINK}}</div>
+    <div class="muted" style="margin-top:8px">روی گوشی: برنامه را نصب کنید و دکمه‌ی «افزودن» را بزنید (یا لینک را کپی و در برنامه Paste کنید). روی کامپیوتر: QR را با گوشی اسکن کنید.</div>
+  </div>
+
+  <div class="card">
+    <h2>دریافت برنامه</h2>
+    <a class="dl" href="https://play.google.com/store/apps/details?id=com.adguard.trusttunnel" rel="noopener noreferrer" target="_blank"><b>اندروید — Google Play</b><span>برنامه‌ی رسمی TrustTunnel (AdGuard)</span></a>
+    <a class="dl" href="https://github.com/TrustTunnel/TrustTunnelFlutterClient/releases" rel="noopener noreferrer" target="_blank"><b>اندروید — فایل APK</b><span>اگر Google Play ندارید؛ از صفحه‌ی انتشار رسمی در GitHub</span></a>
+    <a class="dl" href="https://agrd.io/ios_trusttunnel" rel="noopener noreferrer" target="_blank"><b>آیفون / آیپد — App Store</b><span>برنامه‌ی رسمی TrustTunnel</span></a>
+    {{DOWNLOADS}}
+  </div>
+
+  <div class="card">
+    <h2>راهنمای سریع</h2>
+    <ol>
+      <li>برنامه را از بالا نصب کنید.</li>
+      <li>«افزودن به TrustTunnel» را بزنید یا QR را اسکن کنید.</li>
+      <li>در برنامه روی اتصال بزنید. اگر وصل نشد، HTTP/2 را امتحان کنید.</li>
+    </ol>
+    <div class="muted" style="margin-top:8px">این صفحه و لینک حاوی رمز شخصی شماست؛ آن را برای دیگران نفرستید.</div>
+  </div>
+</div>
+<div class="toast" id="toast">کپی شد</div>
+<script>
+document.getElementById('copy').onclick=async()=>{const t=document.getElementById('link').textContent;
+ try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()}
+ const s=document.getElementById('toast');s.classList.add('show');setTimeout(()=>s.classList.remove('show'),1500)};
+</script>
+</body>
+</html>

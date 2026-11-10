@@ -110,7 +110,7 @@ namespace TT
         /// <summary>Imports a tt:// deep link with the official setup_wizard. Returns null on success or an error text.</summary>
         public static string ImportLink(string link)
         {
-            link = (link ?? "").Trim().Trim('"', '\'', ' ').TrimEnd('/');
+            link = DeepLink.Normalize(link);
             if (!link.StartsWith("tt://", StringComparison.OrdinalIgnoreCase)) return "لینک باید با tt:// شروع شود.";
             if (!Regex.IsMatch(link, "^tt://\\?[A-Za-z0-9_\\-=]+$")) return "لینک ناقص یا خراب است؛ کامل کپی کنید.";
             if (!File.Exists(Wizard)) return "فایل setup_wizard.exe کنار برنامه نیست.";
@@ -140,6 +140,15 @@ namespace TT
     /// <summary>Reads the display name (tag 0x0C) from a tt:// deep link (TLV with varints, base64url).</summary>
     static class DeepLink
     {
+        /// <summary>Windows hands URL-protocol links over as "tt:///?…" (and may percent-encode); bring them back to "tt://?…".</summary>
+        public static string Normalize(string link)
+        {
+            var s = (link ?? "").Trim().Trim('"', '\'', ' ');
+            if (s.IndexOf('%') >= 0) { try { s = Uri.UnescapeDataString(s); } catch { } }
+            s = Regex.Replace(s, "^tt:/*\\?", "tt://?", RegexOptions.IgnoreCase);
+            return s.TrimEnd('/');
+        }
+
         public static string Name(string link)
         {
             try
