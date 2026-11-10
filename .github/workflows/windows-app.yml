@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 25
     env:
       TT_TEST_LINK: ${{ secrets.TT_TEST_LINK }}
+      TT_TEST_LINK2: ${{ secrets.TT_TEST_LINK2 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,6 +36,15 @@ jobs:
           Copy-Item windows-gui/package/* pkg/TrustTunnel/
           Copy-Item windows-gui/fonts/OFL.txt pkg/TrustTunnel/OFL-Vazirmatn.txt
           Get-ChildItem pkg/TrustTunnel | Format-Table Name, Length
+
+      - name: Build installer (Inno Setup 6)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc /Qp "/DPkgDir=$env:GITHUB_WORKSPACE\pkg\TrustTunnel" /DAppVer=2.1.0 "/O$env:GITHUB_WORKSPACE\setup" windows-gui\installer.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Get-ChildItem setup | Format-Table Name, Length
 
       - name: Live UI test against the real server
         if: env.TT_TEST_LINK != ''
@@ -103,9 +113,30 @@ jobs:
             Start-Sleep -Milliseconds 200; [void][M]::SetCursorPos(1000, 700)
             return $true
           }
+          function ClickDlg($w, $lx, $ly, $base, $label) {
+            $s = $w.W / $base
+            [void][M]::SetForegroundWindow($w.H); Start-Sleep -Milliseconds 300
+            $x = [int]($w.X + $lx * $s); $y = [int]($w.Y + $ly * $s)
+            [void][M]::SetCursorPos($x, $y); Start-Sleep -Milliseconds 250
+            [M]::mouse_event(2,0,0,0,[IntPtr]::Zero); Start-Sleep -Milliseconds 60; [M]::mouse_event(4,0,0,0,[IntPtr]::Zero)
+            Write-Host "clicked $label at $x,$y in '$($w.Name)'"
+            Start-Sleep -Milliseconds 200; [void][M]::SetCursorPos(1000, 700)
+          }
+          function Dlg { Wins | Where-Object { $_.Name -notlike 'TrustTunnel*Sabi*' } | Select-Object -First 1 }
+          function Enter { $d = Dlg; if ($d) { [void][M]::SetForegroundWindow($d.H); Start-Sleep -Milliseconds 400; [System.Windows.Forms.SendKeys]::SendWait('{ENTER}'); Write-Host "ENTER on '$($d.Name)'" } }
+          function TomlUser { $m = Select-String -Path trusttunnel_client.toml -Pattern '^username = "(.*)"' -ErrorAction SilentlyContinue; if ($m) { $m.Matches[0].Groups[1].Value } else { '' } }
+          function Servers { @(Get-ChildItem servers -Filter *.toml -ErrorAction SilentlyContinue).Count }
           function Windows($label) { Write-Host "--- windows ($label) ---"; foreach ($w in Wins) { Write-Host ("  '{0}'  {1},{2} {3}x{4}" -f $w.Name, $w.X, $w.Y, $w.W, $w.Hh) } }
 
-          Set-Location pkg/TrustTunnel
+          # ---------- install with the real Setup.exe, then test from Program Files
+          $p = Start-Process "$env:GITHUB_WORKSPACE\setup\TrustTunnel-Setup.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/TASKS=desktopicon',"/LOG=$shots\setup.log" -Wait -PassThru
+          $app = "$env:ProgramFiles\TrustTunnel"
+          $R.setup_exit = $p.ExitCode
+          $R.installed = Test-Path "$app\TrustTunnel.exe"
+          $R.start_menu = Test-Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\TrustTunnel\TrustTunnel.lnk"
+          $R.desktop_icon = Test-Path "$env:PUBLIC\Desktop\TrustTunnel.lnk"
+          $R.proto_hklm = [string](Get-ItemProperty 'HKLM:\Software\Classes\tt\shell\open\command' -ErrorAction SilentlyContinue).'(default)'
+          Set-Location $app
           $R.before = Ip; Write-Host "IP before: $($R.before)"
 
           # ---------- A: first run, no settings -> import dialog
@@ -175,17 +206,67 @@ jobs:
           $R.ip_after_quit = Ip
           Shot '15-after-quit'
 
+          # ---------- F: add a 2nd server by opening a tt:// link (protocol handler -> running app), switch, delete
+          Start-Process .\TrustTunnel.exe; Start-Sleep 6
+          $R.migrated_servers = Servers
+          $R.proto_hkcu = [string](Get-ItemProperty 'HKCU:\Software\Classes\tt\shell\open\command' -ErrorAction SilentlyContinue).'(default)'
+          if ($env:TT_TEST_LINK2) {
+            Start-Process $env:TT_TEST_LINK2; Start-Sleep 6
+            Windows 'tt:// opened'; Shot '16-link-opened'
+            $R.link_dialog = [bool](Dlg)
+            Enter; Start-Sleep 9
+            Windows 'after save'; Shot '17-added'; CloseDialogs
+            $R.servers_after_add = Servers; $R.active_after_add = TomlUser
+            GuiCmd 'connect'; Start-Sleep 18
+            $R.p2_client = Client; $R.p2_ip = Ip
+            Shot '18-second-server-on'
+            GuiCmd 'servers'; Start-Sleep 1
+            Windows 'servers'; Shot '19-servers'
+            $d = Dlg
+            if ($d) { ClickDlg $d 260 100 440 'first server row' }
+            Start-Sleep -Milliseconds 1500; Shot '20-switching'
+            Start-Sleep 24
+            $R.switched_user = TomlUser; $R.switch_client = Client; $R.switch_ip = Ip
+            Shot '21-switched'
+            GuiCmd 'servers'; Start-Sleep 1
+            $d = Dlg
+            if ($d) { ClickDlg $d 50 160 440 'trash on second row' }
+            Start-Sleep 1; Windows 'delete?'; Shot '22-delete-ask'
+            Enter; Start-Sleep 2
+            Windows 'after delete'; Shot '23-after-delete'; CloseDialogs
+            $R.servers_after_delete = Servers; $R.client_after_delete = Client
+            GuiCmd 'settings'; Start-Sleep 1; Shot '24-settings'; GuiCmd 'home'
+            # first-instance path: quit, then open the link with the app closed
+            GuiCmd 'quit'; Start-Sleep 12
+            Start-Process $env:TT_TEST_LINK2; Start-Sleep 8
+            $R.cold_link_dialog = [bool](Dlg)
+            Windows 'cold link'; Shot '25-cold-link'; CloseDialogs
+            # leave it running + connected so the uninstaller has to stop it
+            GuiCmd 'connect'; Start-Sleep 18
+            $R.before_uninstall_client = Client
+          }
+
           # ---------- report
           Copy-Item trusttunnel_last.log $shots -ErrorAction SilentlyContinue
           if (Test-Path trusttunnel_gui_error.log) { $R.crash_log = $true; Copy-Item trusttunnel_gui_error.log $shots; Write-Host '--- CRASH LOG ---'; Get-Content trusttunnel_gui_error.log | Write-Host } else { $R.crash_log = $false }
           Write-Host '--- GUI log (tail) ---'; Get-Content trusttunnel_last.log -ErrorAction SilentlyContinue | Select-Object -Last 60 | Out-String | Write-Host
+
+          # ---------- G: silent uninstall while connected
+          Set-Location $env:GITHUB_WORKSPACE
+          Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          for ($i = 0; $i -lt 40 -and (Test-Path $app); $i++) { Start-Sleep 1 }
+          Start-Sleep 3
+          $R.uninst_gui = [bool](Gui); $R.uninst_client = Client
+          $R.uninst_dir_left = Test-Path $app
+          $R.uninst_proto_left = Test-Path 'HKLM:\Software\Classes\tt'
+          $R.uninst_task_left = [bool](schtasks /Query /TN TrustTunnelGUI 2>$null)
+          $R.ip_after_uninstall = Ip
           Write-Host '--- routes ---'; route print -4 | Select-Object -First 30 | Out-String | Write-Host
           ($R.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join "`n" | Set-Content "$shots\result.txt"
           Get-Content "$shots\result.txt" | Write-Host
           Get-Process TrustTunnel, trusttunnel_client -ErrorAction SilentlyContinue | Stop-Process -Force
-          Remove-Item trusttunnel_client.toml, gui.ini, trusttunnel_last.log, trusttunnel_gui_error.log -ErrorAction SilentlyContinue
           New-Item -ItemType Directory "$shots\bin" -Force | Out-Null
-          Copy-Item "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe", "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe.config" "$shots\bin\"
+          Copy-Item "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe", "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe.config", "$env:GITHUB_WORKSPACE\setup\TrustTunnel-Setup.exe" "$shots\bin\"
 
       - name: Publish test results to ci-results branch
         if: always() && env.TT_TEST_LINK != ''
@@ -203,4 +284,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TrustTunnel-Windows
-          path: pkg/
+          path: |
+            pkg/
+            setup/

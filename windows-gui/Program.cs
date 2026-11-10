@@ -13,15 +13,18 @@ namespace TT
         [STAThread]
         static void Main(string[] args)
         {
-            var cmds = args.Select(a => a.TrimStart('-', '/').ToLowerInvariant()).ToArray();
+            var link = args.FirstOrDefault(Proto.IsLink);          // tt://… opened from a browser / QR / chat
+            var cmds = args.Where(a => !Proto.IsLink(a)).Select(a => a.TrimStart('-', '/').ToLowerInvariant()).ToArray();
+            if (link != null) Proto.Stash(link);
             using (var mutex = new Mutex(true, "TrustTunnelGUI_SabiVPN_Mutex", out bool first))
             {
                 if (!first)
                 {
-                    var cmd = cmds.FirstOrDefault(c => Array.IndexOf(MainForm.Cmds, c) >= 0) ?? "show";
+                    var cmd = link != null ? "addlink" : cmds.FirstOrDefault(c => Array.IndexOf(MainForm.Cmds, c) >= 0) ?? "show";
                     try { EventWaitHandle.OpenExisting(EventName(cmd)).Set(); } catch { }
                     return;
                 }
+                if (link == null && (cmds.Contains("quit") || cmds.Contains("disconnect"))) return;   // nothing running: nothing to stop
                 System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);

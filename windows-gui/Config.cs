@@ -29,12 +29,16 @@ namespace TT
             "varzesh3.com\r\n*.varzesh3.com\r\ntorob.com\r\n*.torob.com\r\n";
 
         public static bool Exists => File.Exists(Toml);
+        public static string NewToml => Path.Combine(Dir, "trusttunnel_client.new.toml");
 
-        public static string Get(string key)
+        public static string Get(string key) => Exists ? GetFrom(Toml, key) : null;
+
+        /// <summary>Reads a top-level "key = value" from any client TOML file.</summary>
+        public static string GetFrom(string path, string key)
         {
-            if (!Exists) return null;
+            if (!File.Exists(path)) return null;
             var re = new Regex("^\\s*" + Regex.Escape(key) + "\\s*=\\s*(.*)$");
-            foreach (var raw in File.ReadAllLines(Toml))
+            foreach (var raw in File.ReadAllLines(path))
             {
                 var m = re.Match(raw);
                 if (!m.Success) continue;
@@ -106,11 +110,11 @@ namespace TT
         /// <summary>Imports a tt:// deep link with the official setup_wizard. Returns null on success or an error text.</summary>
         public static string ImportLink(string link)
         {
-            link = (link ?? "").Trim().Trim('"', '\'', ' ');
+            link = (link ?? "").Trim().Trim('"', '\'', ' ').TrimEnd('/');
             if (!link.StartsWith("tt://", StringComparison.OrdinalIgnoreCase)) return "لینک باید با tt:// شروع شود.";
             if (!Regex.IsMatch(link, "^tt://\\?[A-Za-z0-9_\\-=]+$")) return "لینک ناقص یا خراب است؛ کامل کپی کنید.";
             if (!File.Exists(Wizard)) return "فایل setup_wizard.exe کنار برنامه نیست.";
-            var tmp = Path.Combine(Dir, "trusttunnel_client.new.toml");
+            var tmp = NewToml;
             try { File.Delete(tmp); } catch { }
             var psi = new ProcessStartInfo(Wizard, "--mode non-interactive --deeplink \"" + link + "\" --settings \"" + tmp + "\"")
             {
@@ -129,11 +133,7 @@ namespace TT
                     return msg.Length > 500 ? msg.Substring(msg.Length - 500) : msg;
                 }
             }
-            File.Copy(tmp, Toml, true);
-            try { File.Delete(tmp); } catch { }
-            var name = DeepLink.Name(link);
-            Ini.Set("name", name ?? "");
-            return null;
+            return null;   // the new settings are left in NewToml; Profiles.Add() stores them
         }
     }
 

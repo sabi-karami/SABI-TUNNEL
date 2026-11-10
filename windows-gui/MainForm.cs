@@ -20,8 +20,8 @@ namespace TT
     sealed class MainForm : GlassForm
     {
         const float WW = 380, HH = 664;
-        public const string GuiVersion = "2.0";
-        public static readonly string[] Cmds = { "show", "toggle", "connect", "disconnect", "settings", "home", "log", "import", "bypass", "quit" };
+        public const string GuiVersion = "2.1";
+        public static readonly string[] Cmds = { "show", "toggle", "connect", "disconnect", "settings", "home", "log", "import", "bypass", "servers", "addlink", "quit" };
 
         readonly bool startInTray;
         readonly ClientRunner runner = new ClientRunner();
@@ -39,12 +39,12 @@ namespace TT
         // ---- widgets
         readonly Page main = new Page(), settings = new Page();
         PillButton btnMain, btnNewLink;
-        Custom orb, tileIp, tilePing, tileUse, footer;
+        Custom orb, tileIp, tilePing, tileUse, footer, chipW;
         Segmented seg;
-        Toggle tKill, tAuto, tStart;
+        Toggle tKill, tAuto, tStart, tNotify;
         readonly NotifyIcon tray;
         readonly ContextMenuStrip menu;
-        readonly ToolStripMenuItem miHead, miToggle;
+        readonly ToolStripMenuItem miHead, miToggle, miServers;
         readonly Dictionary<string, Icon> trayIcons = new Dictionary<string, Icon>();
         readonly System.Windows.Forms.Timer tick = new System.Windows.Forms.Timer { Interval = 500 };
         readonly Queue<string> pending = new Queue<string>();
@@ -53,6 +53,7 @@ namespace TT
 
         // ---- visuals
         string profile = "TrustTunnel", host = "", user = "";
+        int profileCount;
         string orbWord = "", orbHint = "", status = "";
         Color statusColor = Theme.Muted;
         Color c1 = Theme.Idle, c2 = Theme.Idle, f1 = Theme.Idle, f2 = Theme.Idle, t1 = Theme.Idle, t2 = Theme.Idle;
@@ -88,6 +89,8 @@ namespace TT
             Canvas.Animate = AnimateFrame;
             Canvas.Key += OnKey;
             Canvas.DragZone = p => p.Y < 56;
+            Profiles.Migrate();
+            Proto.Register();
             BuildChrome();
             BuildMain();
             BuildSettings();
@@ -99,6 +102,11 @@ namespace TT
             menu.Items.Add(miHead);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(miToggle);
+            miServers = new ToolStripMenuItem("سرورها");
+            var dd = (ToolStripDropDownMenu)miServers.DropDown;
+            dd.Renderer = new DarkMenuRenderer(); dd.RightToLeft = RightToLeft.Yes; dd.ShowImageMargin = false; dd.ShowCheckMargin = false; dd.Font = menu.Font;
+            menu.Items.Add(miServers);
+            menu.Opening += (s, e) => FillServersMenu();
             menu.Items.Add(new ToolStripMenuItem("نمایش برنامه", null, (s, e) => ShowMain()));
             menu.Items.Add(new ToolStripMenuItem("گزارش اتصال", null, (s, e) => ShowLog()));
             menu.Items.Add(new ToolStripSeparator());
@@ -132,6 +140,7 @@ namespace TT
         {
             main.Under = PaintMain;
             main.Add(new IconButton { B = new RectangleF(88, 14, 32, 32), Inset = 7, Glyph = (g, r, c) => Glyph.Gear(g, r, c), Click = GoSettings });
+            chipW = main.Add(new Custom { B = new RectangleF(60, 88, WW - 120, 28), Clickable = true, GlowPad = 2, Click = ShowServers });
             orb = main.Add(new Custom { B = OrbRect, Clickable = true, Draw = PaintOrb, Click = ToggleConnect, GlowPad = 2 });
             btnMain = main.Add(new PillButton { B = new RectangleF(WW / 2 - 126, 390, 252, 54), FontPx = 16, Click = ToggleConnect });
             float tw = (WW - 40 - 16) / 3f, ty = 578;
@@ -156,12 +165,13 @@ namespace TT
             tKill = settings.Add(new Toggle { B = new RectangleF(20, y, WW - 40, 60), Title = "Kill switch", Desc = "اگر VPN قطع شد، اینترنت هم قطع بماند (امن‌تر)", Changed = OnKillChanged });
             tAuto = settings.Add(new Toggle { B = new RectangleF(20, y + 60, WW - 40, 60), Title = "اتصال خودکار", Desc = "با باز شدن برنامه خودش وصل شود", Changed = v => { Ini.Set("autoconnect", v ? "1" : "0"); return true; } });
             tStart = settings.Add(new Toggle { B = new RectangleF(20, y + 120, WW - 40, 60), Title = "اجرا با ویندوز", Desc = "بعد از ورود به ویندوز، کنار ساعت باز شود", Changed = OnStartupChanged });
+            tNotify = settings.Add(new Toggle { B = new RectangleF(20, y + 180, WW - 40, 60), Title = "اعلان‌ها", Desc = "پیام کنار ساعت هنگام وصل، قطع و اتصال مجدد", Changed = v => { Ini.Set("notify", v ? "1" : "0"); return true; } });
             btnNewLink = settings.Add(new PillButton
             {
-                B = new RectangleF(32, 391, 116, 42), Style = PillStyle.Ghost, Text = "لینک جدید", FontPx = 13, Weight = 500,
-                Icon = (g, r, c) => Glyph.Link(g, r, c), Click = () => ImportFlow()
+                B = new RectangleF(32, 451, 116, 42), Style = PillStyle.Ghost, Text = "سرورها", FontPx = 13, Weight = 500,
+                Icon = (g, r, c) => Glyph.Globe(g, r, c), Click = ShowServers
             });
-            float bw = (WW - 40 - 16) / 3f, by = 492;
+            float bw = (WW - 40 - 16) / 3f, by = 552;
             settings.Add(new PillButton { B = new RectangleF(WW - 20 - bw, by, bw, 46), Style = PillStyle.Ghost, Radius = 14, Text = "سایت‌های مستقیم", FontPx = 12.5f, Weight = 500, Click = EditBypass });
             settings.Add(new PillButton { B = new RectangleF(20 + bw + 8, by, bw, 46), Style = PillStyle.Ghost, Radius = 14, Text = "گزارش اتصال", FontPx = 12.5f, Weight = 500, Click = ShowLog });
             settings.Add(new PillButton { B = new RectangleF(20, by, bw, 46), Style = PillStyle.Ghost, Radius = 14, Text = "پوشه برنامه", FontPx = 12.5f, Weight = 500, Click = Sys.OpenFolder });
@@ -205,7 +215,7 @@ namespace TT
             float tw = Math.Min(WW - 80, Gfx.Measure(g, chip, cf, 10000, !latin).Width);
             var cr = new RectangleF((WW - tw - 34) / 2, 90, tw + 34, 24);
             Gfx.FillRound(g, cr, 12, Color.FromArgb(12, 255, 255, 255));
-            Gfx.StrokeRound(g, cr, 12, Theme.Stroke);
+            Gfx.StrokeRound(g, cr, 12, Theme.Mix(Theme.Stroke, Theme.A(Theme.Off1, 150), chipW.HoverT));
             Gfx.Glow(g, new PointF(cr.X + 15, cr.Y + 12), 9, 9, c1, 120);
             using (var b = new SolidBrush(state == VState.On ? c1 : Theme.Mix(c1, Theme.Muted, 0.4f))) g.FillEllipse(b, cr.X + 12, cr.Y + 9, 6, 6);
             Gfx.Text(g, chip, cf, Theme.Muted, new RectangleF(cr.X + 24, cr.Y, tw + 4, cr.Height), Al.Left, !latin);
@@ -321,19 +331,20 @@ namespace TT
         {
             Gfx.Text(g, "تنظیمات", FontKit.Px(18, 700), Theme.Text, new RectangleF(130, 14, WW - 14 - 36 - 6 - 130, 32));
             Section(g, "اتصال", 60);
-            var tc = new RectangleF(20, 156, WW - 40, 180);
+            var tc = new RectangleF(20, 156, WW - 40, 240);
             Gfx.Card(g, tc, 18);
-            using (var p = new Pen(Theme.Stroke, 1f)) { g.DrawLine(p, tc.X + 16, tc.Y + 60, tc.Right - 16, tc.Y + 60); g.DrawLine(p, tc.X + 16, tc.Y + 120, tc.Right - 16, tc.Y + 120); }
+            using (var p = new Pen(Theme.Stroke, 1f)) for (int i = 1; i < 4; i++) g.DrawLine(p, tc.X + 16, tc.Y + 60 * i, tc.Right - 16, tc.Y + 60 * i);
 
-            Section(g, "سرور", 348);
-            var sc = new RectangleF(20, 372, WW - 40, 80);
+            int count = profileCount;
+            Section(g, count > 1 ? "سرور  ·  " + Gfx.Fa(count.ToString()) + " سرور ذخیره‌شده" : "سرور", 408);
+            var sc = new RectangleF(20, 432, WW - 40, 80);
             Gfx.Card(g, sc, 18);
             var tx = new RectangleF(sc.X + 140, sc.Y, sc.Width - 140 - 16, 0);
             Gfx.Text(g, profile, FontKit.Px(14, 700), Theme.Text, new RectangleF(tx.X, sc.Y + 10, tx.Width, 22));
             Gfx.Text(g, string.IsNullOrEmpty(host) ? "—" : host, FontKit.Px(11.5f), Theme.Muted, new RectangleF(tx.X, sc.Y + 33, tx.Width, 18), Al.Right, false);
             Gfx.Text(g, string.IsNullOrEmpty(user) ? "" : "کاربر: " + user, FontKit.Px(11.5f), Theme.Muted, new RectangleF(tx.X, sc.Y + 52, tx.Width, 18));
 
-            Section(g, "ابزارها", 466);
+            Section(g, "ابزارها", 526);
             Gfx.Text(g, "TrustTunnel client 1.1.11  ·  GUI " + GuiVersion + "  ·  Vazirmatn  ·  sabi-karami", FontKit.Px(10.5f), Theme.Dim,
                      new RectangleF(20, HH - 34, WW - 40, 18), Al.Center, false);
         }
@@ -511,7 +522,7 @@ namespace TT
 
         void RunCommand(string c)
         {
-            if (c != "toggle" && c != "connect" && c != "disconnect" && c != "quit" && ModalUp()) return;
+            if (c != "toggle" && c != "connect" && c != "disconnect" && c != "quit" && ModalUp()) { if (c == "addlink") Toast("اول پنجره‌ی باز را ببندید و دوباره لینک را باز کنید"); return; }
             switch (c)
             {
                 case "show": ShowMain(); break;
@@ -523,6 +534,8 @@ namespace TT
                 case "log": ShowLog(); break;
                 case "import": ImportFlow(); break;
                 case "bypass": ShowMain(); EditBypass(); break;
+                case "servers": ShowServers(); break;
+                case "addlink": { var l = Proto.TakePending(); if (l != null) ImportFlow(l); } break;
                 case "quit": ExitApp(); break;
             }
         }
@@ -547,6 +560,8 @@ namespace TT
                 }
                 else return;
             }
+            var link = Proto.TakePending();
+            if (link != null) { ImportFlow(link); return; }
             if (!Cfg.Exists) { ShowMain(); ImportFlow(); return; }
             if (Ini.Get("autoconnect") == "1") Connect();
         }
@@ -629,6 +644,8 @@ namespace TT
                 tKill.SetSilently(!has || (Cfg.Get("killswitch_enabled") ?? "true") != "false");
                 tAuto.SetSilently(Ini.Get("autoconnect") == "1");
                 tStart.SetSilently(AutoStart.Enabled());
+                tNotify.SetSilently(Ini.Get("notify", "1") != "0");
+                profileCount = Profiles.List().Count;
                 seg.Enabled = tKill.Enabled = has;
                 if (state == VState.Off || state == VState.NoConfig) SetState(has ? VState.Off : VState.NoConfig);
                 Canvas.Invalidate();
@@ -670,24 +687,136 @@ namespace TT
             return false;
         }
 
-        bool ImportFlow()
+        bool ImportFlow(string prefill = null)
         {
             if (ModalUp()) return false;
             ShowMain();
-            if (!(state == VState.Off || state == VState.NoConfig)) { Ui.Info(this, "اول اتصال فعلی را قطع کنید."); return false; }
-            using (var d = new ImportDialog())
+            string link, err;
+            using (var d = new ImportDialog(prefill))
             {
                 if (d.ShowFor(this) != DialogResult.OK) return false;
-                Cursor = Cursors.WaitCursor;
-                string err;
-                try { err = Cfg.ImportLink(d.Link); } finally { Cursor = Cursors.Default; }
-                if (err != null) { Ui.Error(this, "وارد کردن لینک ناموفق بود:\n\n" + err); return false; }
+                link = d.Link.TrimEnd('/');
             }
-            try { Cfg.ApplyBypass(); } catch { }
+            Cursor = Cursors.WaitCursor;
+            try { err = Cfg.ImportLink(link); } finally { Cursor = Cursors.Default; }
+            if (err != null) { Ui.Error(this, "وارد کردن لینک ناموفق بود:\n\n" + err); return false; }
+            Profile p;
+            try { p = Profiles.Add(Cfg.NewToml, DeepLink.Name(link)); }
+            catch (Exception ex) { Ui.Error(this, "ذخیره‌ی سرور ممکن نشد:\n" + ex.Message); return false; }
+            finally { try { File.Delete(Cfg.NewToml); } catch { } }
+            bool replaced = p.Id == Profiles.ActiveId;
+            if (state == VState.Off || state == VState.NoConfig)
+            {
+                try { Profiles.Activate(p, sync: !replaced); Cfg.ApplyBypass(); }
+                catch (Exception ex) { Ui.Error(this, ex.Message); return false; }
+                LoadConfigToUi();
+                GoMain();
+                Ui.Success(this, "سرور «" + p.Name + "» " + (replaced ? "به‌روز شد." : "اضافه شد.") + "\nحالا دکمه‌ی «اتصال» را بزنید.");
+                return true;
+            }
             LoadConfigToUi();
-            GoMain();
-            Ui.Success(this, "سرور با موفقیت اضافه شد.\nحالا دکمه‌ی «اتصال» را بزنید.");
+            if (Ui.Ask(this, "سرور «" + p.Name + "» " + (replaced ? "به‌روز شد." : "به فهرست سرورها اضافه شد.") + "\nهمین حالا به آن وصل شوم؟"))
+                SwitchTo(p, sync: !replaced, force: replaced);
             return true;
+        }
+
+        // =============================================================== saved servers
+
+        void ShowServers()
+        {
+            if (ModalUp()) return;
+            ShowMain();
+            while (true)
+            {
+                var list = Profiles.List();
+                string act, id;
+                using (var d = new ServersDialog(list, Profiles.ActiveId, state != VState.Stopping))
+                {
+                    if (d.ShowFor(this) != DialogResult.OK) return;
+                    act = d.Action; id = d.Id;
+                }
+                if (act == "add") { ImportFlow(); return; }
+                var p = list.FirstOrDefault(x => x.Id == id);
+                if (p == null) return;
+                if (act == "select") { SwitchTo(p); return; }
+                if (act == "delete" && !DeleteProfile(p)) return;
+            }
+        }
+
+        /// <summary>Makes p the live server and connects to it (reconnecting if a tunnel is up).</summary>
+        void SwitchTo(Profile p, bool sync = true, bool force = false)
+        {
+            if (state == VState.Stopping || !File.Exists(p.Toml)) return;
+            bool same = p.Id == Profiles.ActiveId && !force;
+            if (!runner.Running)
+            {
+                if (!same)
+                {
+                    try { Profiles.Activate(p, sync); } catch (Exception ex) { Ui.Error(this, ex.Message); return; }
+                    LoadConfigToUi();
+                }
+                GoMain();
+                Connect();
+                return;
+            }
+            if (same) { GoMain(); return; }
+            GoMain();
+            Toast("رفتن به " + p.Name + "…");
+            reconnectAfterStop = true;
+            Disconnect(() =>
+            {
+                try { Profiles.Activate(p, sync); } catch (Exception ex) { reconnectAfterStop = false; AddLog("[gui] switch: " + ex.Message); }
+                LoadConfigToUi();
+            });
+        }
+
+        /// <summary>Returns true when finished right away (false if it waits for a disconnect).</summary>
+        bool DeleteProfile(Profile p)
+        {
+            bool active = p.Id == Profiles.ActiveId;
+            if (!Ui.Ask(this, "سرور «" + p.Name + "» از فهرست حذف شود؟" + (active && runner.Running ? "\nاتصال فعلی قطع می‌شود." : ""))) return true;
+            Action del = () =>
+            {
+                Profiles.Delete(p);
+                if (active)
+                {
+                    var rest = Profiles.List();
+                    try
+                    {
+                        if (rest.Count > 0) Profiles.Activate(rest[0], sync: false);
+                        else { File.Delete(Cfg.Toml); Ini.Set("name", ""); }
+                    }
+                    catch { }
+                }
+                LoadConfigToUi();
+                Toast("سرور حذف شد");
+            };
+            if (active && runner.Running) { reconnectAfterStop = false; Disconnect(del); return false; }
+            del();
+            return true;
+        }
+
+        void FillServersMenu()
+        {
+            var dd = miServers.DropDownItems;
+            dd.Clear();
+            var active = Profiles.ActiveId;
+            foreach (var p in Profiles.List().Take(12))
+            {
+                var pp = p;
+                var it = new ToolStripMenuItem((p.Id == active ? "●  " : "     ") + p.Name, null, (s, e) => { if (!ModalUp()) SwitchTo(pp); })
+                { Padding = new Padding(10, 5, 10, 5), Enabled = state != VState.Stopping };
+                dd.Add(it);
+            }
+            if (dd.Count > 0) dd.Add(new ToolStripSeparator());
+            dd.Add(new ToolStripMenuItem("مدیریت سرورها…", null, (s, e) => ShowServers()) { Padding = new Padding(10, 5, 10, 5) });
+            dd.Add(new ToolStripMenuItem("افزودن با لینک…", null, (s, e) => ImportFlow()) { Padding = new Padding(10, 5, 10, 5) });
+        }
+
+        void Notify(string text, ToolTipIcon icon)
+        {
+            if (Ini.Get("notify", "1") == "0") return;
+            try { tray.ShowBalloonTip(3000, "TrustTunnel", text, icon); } catch { }
         }
 
         void EditBypass()
@@ -786,7 +915,7 @@ namespace TT
             exitIp = null;
             SetState(Cfg.Exists ? VState.Off : VState.NoConfig,
                      unexpected ? (err ?? "اتصال به‌طور غیرمنتظره بسته شد؛ گزارش را ببینید.") : null, unexpected ? Theme.Danger : (Color?)null);
-            if (unexpected) tray.ShowBalloonTip(4000, "TrustTunnel", "اتصال قطع شد. " + (err ?? ""), ToolTipIcon.Warning);
+            if (unexpected) Notify("اتصال قطع شد. " + (err ?? ""), ToolTipIcon.Warning);
             FireAfterStop();
             if (reconnectAfterStop && !reallyExit) { reconnectAfterStop = false; Connect(); }
         }
@@ -801,7 +930,7 @@ namespace TT
             exitIp = null; probeCount = 0;
             lastProbe = DateTime.Now.AddSeconds(-7);   // first probe ~3 s later, once routes are installed
             lastPing = DateTime.Now.AddSeconds(-18);
-            if (first && !Visible) tray.ShowBalloonTip(2500, "TrustTunnel", "وصل شد ✓", ToolTipIcon.Info);
+            if (!Visible) Notify(first ? "وصل شد ✓  " + profile : "اتصال دوباره برقرار شد ✓", ToolTipIcon.Info);
         }
 
         // =============================================================== client output
@@ -998,7 +1127,9 @@ namespace TT
 
         void SetState(VState s, string sub = null, Color? subColor = null)
         {
+            var prev = state;
             state = s;
+            if (prev == VState.On && s == VState.Reconnecting && !Visible) Notify("اتصال موقتاً قطع شد؛ در حال اتصال مجدد…", ToolTipIcon.Warning);
             Color n1, n2;
             bool spin = false;
             switch (s)
@@ -1030,7 +1161,7 @@ namespace TT
             if (s != VState.On) { status = sub ?? ""; statusColor = subColor ?? (s == VState.Reconnecting ? Theme.Wait1 : Theme.Muted); }
             else if (sub != null) { status = sub; statusColor = subColor ?? Theme.Muted; }
             orb.Clickable = s != VState.Stopping;
-            btnNewLink.Enabled = s == VState.Off || s == VState.NoConfig;
+            btnNewLink.Enabled = s != VState.Stopping;
 
             tray.Icon = TrayIcon(s == VState.On ? "on" : (s == VState.Off || s == VState.NoConfig ? "off" : "wait"));
             var tip = "TrustTunnel · " + orbWord;

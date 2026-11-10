@@ -375,6 +375,21 @@ namespace TT
             }
         }
 
+        public static void Trash(Graphics g, RectangleF r, Color c, float w = 1.5f)
+        {
+            using (var p = P(c, w))
+            {
+                float x = r.X, y = r.Y, W = r.Width, H = r.Height;
+                g.DrawLine(p, x + W * 0.08f, y + H * 0.22f, x + W * 0.92f, y + H * 0.22f);
+                g.DrawLine(p, x + W * 0.36f, y + H * 0.06f, x + W * 0.64f, y + H * 0.06f);
+                g.DrawLine(p, x + W * 0.36f, y + H * 0.06f, x + W * 0.36f, y + H * 0.22f);
+                g.DrawLine(p, x + W * 0.64f, y + H * 0.06f, x + W * 0.64f, y + H * 0.22f);
+                g.DrawLines(p, new[] { new PointF(x + W * 0.2f, y + H * 0.3f), new PointF(x + W * 0.26f, y + H * 0.96f), new PointF(x + W * 0.74f, y + H * 0.96f), new PointF(x + W * 0.8f, y + H * 0.3f) });
+                g.DrawLine(p, x + W * 0.42f, y + H * 0.42f, x + W * 0.42f, y + H * 0.8f);
+                g.DrawLine(p, x + W * 0.58f, y + H * 0.42f, x + W * 0.58f, y + H * 0.8f);
+            }
+        }
+
         public static void Copy(Graphics g, RectangleF r, Color c, float w = 1.5f)
         {
             using (var p = P(c, w))

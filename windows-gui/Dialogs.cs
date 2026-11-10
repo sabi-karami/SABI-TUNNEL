@@ -161,7 +161,7 @@ namespace TT
         string error;
         public string Link => (tb.Text ?? "").Trim().Trim('"', '\'');
 
-        public ImportDialog() : base("وارد کردن لینک", 460, 340)
+        public ImportDialog(string prefill = null) : base("وارد کردن لینک", 460, 340)
         {
             Subtitle = "";
             var desc = "لینک اتصال کاربر (که با tt شروع می‌شود) را از پنل مدیریت کپی کنید. اگر در کلیپ‌بورد باشد، خودکار همین‌جا قرار می‌گیرد.";
@@ -174,7 +174,7 @@ namespace TT
             tb = Field(new RectangleF(24, 104, LW - 48, 118), true);
             tb.AcceptsReturn = false;
             tb.TextChanged += (s, e) => { if (error != null) { error = null; Canvas.Invalidate(); } };
-            TryPaste(false);
+            if (!string.IsNullOrEmpty(prefill)) tb.Text = prefill.Trim(); else TryPaste(false);
 
             float by = 266;
             var ok = Page.Add(new PillButton { Text = "ذخیره", B = new RectangleF(LW - 24 - 132, by, 132, 46), FontPx = 14.5f });
