@@ -573,8 +573,9 @@ async def share_page(name: str, token: str, p: str = "http2"):
     usage = _fmt_bytes(used) + (f" از {quota:g} GB" if quota else " (بدون محدودیت حجم)")
     pct = min(100, used / (quota * 10**9) * 100) if quota else 0
     if exp:
-        days = int((exp - now) // 86400)
-        expiry = time.strftime("%Y-%m-%d", time.gmtime(exp)) + (f" — {days} روز مانده" if days >= 0 else " — گذشته")
+        left = exp - now
+        expiry = time.strftime("%Y-%m-%d", time.gmtime(exp)) + (
+            " — گذشته" if left < 0 else " — کمتر از یک روز مانده" if left < 86400 else f" — {int(left // 86400)} روز مانده")
     else:
         expiry = "بدون تاریخ انقضا"
     base = f"/s/{name}/{token}"
