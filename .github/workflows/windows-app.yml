@@ -1,0 +1,90 @@
+name: Windows app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['windows-gui/**', '.github/workflows/windows-app.yml']
+
+env:
+  CLIENT_VERSION: '1.1.11'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      TT_TEST_LINK: ${{ secrets.TT_TEST_LINK }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build GUI (.NET Framework 4.8, no runtime needed on Windows 10/11)
+        run: dotnet build windows-gui/TrustTunnelGUI.csproj -c Release -o build
+
+      - name: Assemble package
+        shell: pwsh
+        run: |
+          $v = $env:CLIENT_VERSION
+          Invoke-WebRequest "https://github.com/TrustTunnel/TrustTunnelClient/releases/download/v$v/trusttunnel_client-v$v-windows-x86_64.zip" -OutFile client.zip
+          New-Item -ItemType Directory pkg/TrustTunnel -Force | Out-Null
+          Expand-Archive client.zip -DestinationPath pkg/TrustTunnel -Force
+          Copy-Item build/TrustTunnel.exe, build/TrustTunnel.exe.config pkg/TrustTunnel/
+          Copy-Item windows-gui/package/* pkg/TrustTunnel/
+          Get-ChildItem pkg/TrustTunnel | Format-Table Name, Length
+
+      - name: Live test against the real server
+        if: env.TT_TEST_LINK != ''
+        timeout-minutes: 8
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing, UIAutomationClient, UIAutomationTypes
+          function Shot($name) {
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+            $bmp.Save("$env:GITHUB_WORKSPACE\shots\$name.png"); $g.Dispose(); $bmp.Dispose()
+          }
+          function Ip { try { (Invoke-WebRequest https://api.ipify.org -UseBasicParsing -TimeoutSec 15).Content.Trim() } catch { "error: $($_.Exception.Message)" } }
+          New-Item -ItemType Directory "$env:GITHUB_WORKSPACE\shots" -Force | Out-Null
+          Set-Location pkg/TrustTunnel
+          $before = Ip; Write-Host "IP before: $before"
+          .\setup_wizard.exe --mode non-interactive --deeplink $env:TT_TEST_LINK --settings trusttunnel_client.toml | Out-Null
+          $t = [IO.File]::ReadAllText("$PWD\trusttunnel_client.toml") -replace '(?m)^killswitch_enabled = .*', 'killswitch_enabled = false'
+          [IO.File]::WriteAllText("$PWD\trusttunnel_client.toml", $t)
+          [IO.File]::WriteAllText("$PWD\gui.ini", "autoconnect=1`r`nname=Sabi VPN CI test`r`n")
+          Start-Process .\TrustTunnel.exe
+          Start-Sleep 30
+          Shot 'connected'
+          $after = Ip; Write-Host "IP while connected: $after"
+          $running = [bool](Get-Process trusttunnel_client -ErrorAction SilentlyContinue)
+          Write-Host "client running: $running"
+          # press the big button (Disconnect) through UI Automation -> exercises the graceful Ctrl+C stop
+          $root = [System.Windows.Automation.AutomationElement]::RootElement
+          $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'btnMain')
+          $btn = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+          if ($btn) { $btn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); Write-Host 'clicked disconnect' } else { Write-Host 'button not found' }
+          Start-Sleep 12
+          Shot 'disconnected'
+          $stillRunning = [bool](Get-Process trusttunnel_client -ErrorAction SilentlyContinue)
+          $final = Ip
+          Write-Host "client still running after disconnect: $stillRunning"
+          Write-Host "IP after disconnect: $final"
+          Copy-Item trusttunnel_last.log "$env:GITHUB_WORKSPACE\shots\" -ErrorAction SilentlyContinue
+          "before=$before`nconnected=$after`nclient_running=$running`nstill_running_after_stop=$stillRunning`nafter=$final" | Set-Content "$env:GITHUB_WORKSPACE\shots\result.txt"
+          Get-Process TrustTunnel, trusttunnel_client -ErrorAction SilentlyContinue | Stop-Process -Force
+          Remove-Item trusttunnel_client.toml, gui.ini, trusttunnel_last.log -ErrorAction SilentlyContinue
+
+      - name: Upload test screenshots
+        if: env.TT_TEST_LINK != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: shots/
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrustTunnel-Windows
+          path: pkg/
