@@ -44,12 +44,27 @@ jobs:
           $ErrorActionPreference = 'Continue'
           Add-Type -AssemblyName System.Windows.Forms, System.Drawing, UIAutomationClient, UIAutomationTypes
           Add-Type @'
-          using System; using System.Runtime.InteropServices;
+          using System; using System.Text; using System.Collections.Generic; using System.Runtime.InteropServices;
           public static class M {
             [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
             [DllImport("user32.dll")] public static extern void mouse_event(int f,int x,int y,int d,IntPtr e);
             [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
             [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h,int m,IntPtr w,IntPtr l);
+            public delegate bool EP(IntPtr h, IntPtr l);
+            [DllImport("user32.dll")] static extern bool EnumWindows(EP cb, IntPtr l);
+            [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+            [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+            [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+            [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+            [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+            public static string[] List(int pid) {
+              var res = new List<string>();
+              EnumWindows((h, l) => { uint p; GetWindowThreadProcessId(h, out p);
+                if (p == pid && IsWindowVisible(h)) { var sb = new StringBuilder(256); GetWindowText(h, sb, 256); RECT r; GetWindowRect(h, out r);
+                  res.Add(h.ToInt64() + "|" + sb + "|" + r.L + "|" + r.T + "|" + (r.R - r.L) + "|" + (r.B - r.T)); }
+                return true; }, IntPtr.Zero);
+              return res.ToArray();
+            }
           }
           '@
           $shots = "$env:GITHUB_WORKSPACE\shots"
@@ -69,27 +84,26 @@ jobs:
           function GuiCmd($c) { Start-Process .\TrustTunnel.exe -ArgumentList "--$c"; Start-Sleep -Milliseconds 2200 }
           function Wins {
             $p = Gui; if (-not $p) { return @() }
-            $cond = New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::ProcessIdProperty), $p.Id
-            @([System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $cond))
+            @([M]::List($p.Id) | ForEach-Object { $a = $_.Split('|'); [pscustomobject]@{ H = [IntPtr][long]$a[0]; Name = $a[1]; X = [int]$a[2]; Y = [int]$a[3]; W = [int]$a[4]; Hh = [int]$a[5] } } | Where-Object { $_.Name -ne '' -and $_.W -gt 60 })
           }
-          function MainWin { Wins | Where-Object { $_.Current.Name -like 'TrustTunnel*Sabi*' } | Select-Object -First 1 }
+          function MainWin { Wins | Where-Object { $_.Name -like 'TrustTunnel*Sabi*' } | Select-Object -First 1 }
           function CloseDialogs {
-            foreach ($w in Wins) { if ($w.Current.Name -notlike 'TrustTunnel*Sabi*') { Write-Host "closing window '$($w.Current.Name)'"; [M]::PostMessage([IntPtr]$w.Current.NativeWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null } }
+            foreach ($w in Wins) { if ($w.Name -notlike 'TrustTunnel*Sabi*') { Write-Host "closing window '$($w.Name)'"; [void][M]::PostMessage($w.H, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) } }
             Start-Sleep 1
           }
           function ClickMain($lx, $ly, $label) {
             $w = MainWin
             if (-not $w) { Write-Host "main window not found for $label"; return $false }
-            $r = $w.Current.BoundingRectangle; $s = $r.Width / 380.0
-            [M]::SetForegroundWindow([IntPtr]$w.Current.NativeWindowHandle) | Out-Null; Start-Sleep -Milliseconds 300
-            $x = [int]($r.X + $lx * $s); $y = [int]($r.Y + $ly * $s)
-            [M]::SetCursorPos($x, $y); Start-Sleep -Milliseconds 250
+            $s = $w.W / 380.0
+            [void][M]::SetForegroundWindow($w.H); Start-Sleep -Milliseconds 300
+            $x = [int]($w.X + $lx * $s); $y = [int]($w.Y + $ly * $s)
+            [void][M]::SetCursorPos($x, $y); Start-Sleep -Milliseconds 250
             [M]::mouse_event(2,0,0,0,[IntPtr]::Zero); Start-Sleep -Milliseconds 60; [M]::mouse_event(4,0,0,0,[IntPtr]::Zero)
-            Write-Host "clicked $label at $x,$y (window $($r.X),$($r.Y) $($r.Width)x$($r.Height), scale $s)"
-            [M]::SetCursorPos(5, 5)
+            Write-Host "clicked $label at $x,$y (window $($w.X),$($w.Y) $($w.W)x$($w.Hh), scale $s)"
+            Start-Sleep -Milliseconds 200; [void][M]::SetCursorPos(1000, 700)
             return $true
           }
-          function Windows($label) { Write-Host "--- windows ($label) ---"; foreach ($w in Wins) { $r = $w.Current.BoundingRectangle; Write-Host ("  '{0}'  {1},{2} {3}x{4}" -f $w.Current.Name, $r.X, $r.Y, $r.Width, $r.Height) } }
+          function Windows($label) { Write-Host "--- windows ($label) ---"; foreach ($w in Wins) { Write-Host ("  '{0}'  {1},{2} {3}x{4}" -f $w.Name, $w.X, $w.Y, $w.W, $w.Hh) } }
 
           Set-Location pkg/TrustTunnel
           $R.before = Ip; Write-Host "IP before: $($R.before)"
@@ -134,14 +148,22 @@ jobs:
           $R.client_after_disconnect = Client
           $R.ip_after_disconnect = Ip
 
-          # ---------- E: command-line toggle, orb click, then --quit while connected
-          GuiCmd 'toggle'; Start-Sleep 18
-          $R.toggle_ip = Ip; $R.toggle_client = Client
-          Shot '13-toggle-on'
+          # ---------- E: click the orb to connect, CLI toggle off, CLI connect, then --quit while connected
+          $R.click_orb = ClickMain 190 234 'orb'
+          Start-Sleep 20
+          $R.orb_ip = Ip; $R.orb_client = Client
+          $dl = Start-Job { & curl.exe -s -o NUL --max-time 20 'https://speed.cloudflare.com/__down?bytes=40000000' }
+          Start-Sleep 7; Shot '13-orb-on-traffic'
+          Wait-Job $dl -Timeout 15 | Out-Null; Remove-Job $dl -Force
+          GuiCmd 'toggle'; Start-Sleep 9
+          $R.toggle_off_client = Client
+          GuiCmd 'connect'; Start-Sleep 18
+          $R.cli_connect_ip = Ip; $R.cli_connect_client = Client
+          GuiCmd 'log'; Start-Sleep 1; Shot '14-log-connected'; CloseDialogs
           GuiCmd 'quit'; Start-Sleep 12
           $R.gui_after_quit = [bool](Gui); $R.client_after_quit = Client
           $R.ip_after_quit = Ip
-          Shot '14-after-quit'
+          Shot '15-after-quit'
 
           # ---------- report
           Copy-Item trusttunnel_last.log $shots -ErrorAction SilentlyContinue

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -71,16 +72,25 @@ namespace TT
             if (e.KeyCode == Keys.Escape) { e.Handled = true; Cancel(); }
         }
 
+        /// <summary>The modal dialog currently on screen (null if none).</summary>
+        public static Form ActiveModal { get; private set; }
+
         public DialogResult ShowFor(IWin32Window owner)
         {
-            var f = owner as Form;
-            if (f == null || !f.Visible || f.WindowState == FormWindowState.Minimized)
+            var prev = ActiveModal;
+            ActiveModal = this;
+            try
             {
-                StartPosition = FormStartPosition.CenterScreen;
-                TopMost = true;
-                return ShowDialog();
+                var f = owner as Form;
+                if (f == null || !f.Visible || f.WindowState == FormWindowState.Minimized)
+                {
+                    StartPosition = FormStartPosition.CenterScreen;
+                    TopMost = true;
+                    return ShowDialog();
+                }
+                return ShowDialog(owner);
             }
-            return ShowDialog(owner);
+            finally { ActiveModal = prev; }
         }
     }
 
@@ -213,8 +223,6 @@ namespace TT
             Page.Over = g => Gfx.Text(g, desc, FontKit.Px(12.5f), Theme.Muted, new RectangleF(24, 52, LW - 48, 62), Al.Right, true, true, StringAlignment.Near);
             tb = Field(new RectangleF(24, 120, LW - 48, 366), true);
             tb.Text = current;
-            tb.WordWrap = false;
-            tb.ScrollBars = ScrollBars.Both;
             float by = 508;
             var ok = Page.Add(new PillButton { Text = "ذخیره", B = new RectangleF(LW - 24 - 132, by, 132, 46), FontPx = 14.5f });
             ok.Click = () => { DialogResult = DialogResult.OK; Close(); };
@@ -237,8 +245,8 @@ namespace TT
             Page.Over = g => Gfx.Text(g, path, FontKit.Px(11f), Theme.Dim, new RectangleF(24, 46, LW - 48, 18), Al.Right, false);
             tb = Field(new RectangleF(20, 70, LW - 40, 352), true, true);
             tb.Font = FontKit.MonoPt(8.5f);
-            tb.WordWrap = false;
-            tb.ScrollBars = ScrollBars.Both;
+            tb.WordWrap = true;
+            tb.ScrollBars = ScrollBars.Vertical;
             tb.ForeColor = Theme.Rgb(0xB4, 0xBC, 0xD6);
             float by = 438;
             Page.Add(new PillButton { Text = "بستن", Style = PillStyle.Ghost, B = new RectangleF(LW - 24 - 110, by, 110, 44), FontPx = 14, Click = () => Hide() });
@@ -254,16 +262,22 @@ namespace TT
             base.OnFormClosing(e);
         }
 
+        // "10.11.2026 20:36:56.239281 INFO  [6792] X" -> "20:36:56  INFO  X" (the file keeps the full line)
+        static readonly System.Text.RegularExpressions.Regex Stamp =
+            new System.Text.RegularExpressions.Regex(@"^\d{1,2}\.\d{1,2}\.\d{4} (\d\d:\d\d:\d\d)\.\d+\s+(\w+)\s+\[\d+\]\s*");
+        static string Short(string l) => Stamp.Replace(l, m => m.Groups[1].Value + "  " + m.Groups[2].Value.PadRight(5) + " ", 1);
+        static string Join(IEnumerable<string> lines) => string.Join("\r\n", lines.Select(Short));
+
         public void SetAll(IEnumerable<string> lines)
         {
-            tb.Text = string.Join("\r\n", lines);
-            tb.SelectionStart = tb.TextLength; tb.ScrollToCaret();
+            tb.Text = Join(lines);
+            tb.SelectionStart = tb.TextLength; tb.SelectionLength = 0; tb.ScrollToCaret();
         }
 
         public void Append(IList<string> batch, IEnumerable<string> all)
         {
             if (tb.TextLength > 200000) { SetAll(all); return; }
-            tb.AppendText((tb.TextLength > 0 ? "\r\n" : "") + string.Join("\r\n", batch));
+            tb.AppendText((tb.TextLength > 0 ? "\r\n" : "") + Join(batch));
         }
     }
 

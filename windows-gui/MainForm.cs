@@ -495,8 +495,18 @@ namespace TT
             new Thread(() => { while (true) { int i = WaitHandle.WaitAny(arr); var c = Cmds[i]; Post(() => RunCommand(c)); } }) { IsBackground = true, Name = "commands" }.Start();
         }
 
+        /// <summary>If a modal dialog is open, bring it forward and report true (nothing else can be used meanwhile).</summary>
+        static bool ModalUp()
+        {
+            var md = DarkDialog.ActiveModal;
+            if (md == null || md.IsDisposed || !md.Visible) return false;
+            try { md.Activate(); } catch { }
+            return true;
+        }
+
         void RunCommand(string c)
         {
+            if (c != "toggle" && c != "connect" && c != "disconnect" && c != "quit" && ModalUp()) return;
             switch (c)
             {
                 case "show": ShowMain(); break;
@@ -657,6 +667,7 @@ namespace TT
 
         bool ImportFlow()
         {
+            if (ModalUp()) return false;
             ShowMain();
             if (!(state == VState.Off || state == VState.NoConfig)) { Ui.Info(this, "اول اتصال فعلی را قطع کنید."); return false; }
             using (var d = new ImportDialog())
@@ -676,6 +687,7 @@ namespace TT
 
         void EditBypass()
         {
+            if (ModalUp()) return;
             string text;
             try { text = Cfg.ReadBypass(); } catch (Exception ex) { Ui.Error(this, ex.Message); return; }
             using (var d = new BypassDialog(text))
@@ -690,6 +702,7 @@ namespace TT
 
         void ShowLog()
         {
+            if (ModalUp()) return;
             if (logWin == null || logWin.IsDisposed)
             {
                 logWin = new LogWindow(LogPath) { Owner = Visible ? this : null, StartPosition = FormStartPosition.CenterScreen };
