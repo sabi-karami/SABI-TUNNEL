@@ -468,9 +468,9 @@ namespace TT
             ForeColor = Theme.Text;
             Font = FontKit.Pt(9.5f);
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(Px(w), Px(h));
-            Canvas = new Canvas { Dock = DockStyle.Fill, S = S };
+            Canvas = new Canvas { Dock = DockStyle.Fill, S = S };   // must exist before ClientSize raises OnResize
             Controls.Add(Canvas);
+            ClientSize = new Size(Px(w), Px(h));
             Canvas.DragZone = p => p.Y < 54;
         }
 

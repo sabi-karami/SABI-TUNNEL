@@ -29,7 +29,15 @@ namespace TT
                 Application.ThreadException += (s, e) => { Crash(e.Exception); try { Ui.Error(null, "خطای غیرمنتظره:\n" + e.Exception.Message); } catch { } };
                 AppDomain.CurrentDomain.UnhandledException += (s, e) => Crash(e.ExceptionObject as Exception);
                 bool tray = cmds.Contains("tray");
-                Application.Run(new MainForm(tray));
+                MainForm form;
+                try { form = new MainForm(tray); }
+                catch (Exception ex)
+                {
+                    Crash(ex);
+                    MessageBox.Show("TrustTunnel could not start:\n\n" + ex.Message + "\n\nDetails: trusttunnel_gui_error.log", "TrustTunnel", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+                Application.Run(form);
                 GC.KeepAlive(mutex);
             }
         }

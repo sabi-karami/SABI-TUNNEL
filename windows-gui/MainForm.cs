@@ -476,8 +476,8 @@ namespace TT
         }
 
         protected override void OnShown(EventArgs e) { base.OnShown(e); Canvas.Focus(); Canvas.Kick(); }
-        protected override void OnVisibleChanged(EventArgs e) { base.OnVisibleChanged(e); if (Visible) Canvas.Kick(); }
-        protected override void OnResize(EventArgs e) { base.OnResize(e); if (WindowState != FormWindowState.Minimized) { Canvas.Invalidate(); Canvas.Kick(); } }
+        protected override void OnVisibleChanged(EventArgs e) { base.OnVisibleChanged(e); if (Visible) Canvas?.Kick(); }
+        protected override void OnResize(EventArgs e) { base.OnResize(e); if (Canvas != null && WindowState != FormWindowState.Minimized) { Canvas.Invalidate(); Canvas.Kick(); } }
 
         void OnKey(KeyEventArgs e)
         {
