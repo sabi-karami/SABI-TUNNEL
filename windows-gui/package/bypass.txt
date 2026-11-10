@@ -1,0 +1,19 @@
+# Sites listed here open directly (not through the VPN). One per line.
+# "*.ir" = every .ir domain.  For .com sites write both "site.com" and "*.site.com".
+*.ir
+digikala.com
+*.digikala.com
+aparat.com
+*.aparat.com
+eitaa.com
+*.eitaa.com
+bale.ai
+*.bale.ai
+filimo.com
+*.filimo.com
+telewebion.com
+*.telewebion.com
+varzesh3.com
+*.varzesh3.com
+torob.com
+*.torob.com
