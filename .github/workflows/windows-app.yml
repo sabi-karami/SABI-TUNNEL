@@ -9,6 +9,9 @@ on:
 env:
   CLIENT_VERSION: '1.1.11'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -64,6 +67,13 @@ jobs:
           $root = [System.Windows.Automation.AutomationElement]::RootElement
           $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'btnMain')
           $btn = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+          if (-not $btn) { $c2 = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'btnMain'); $btn = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $c2) }
+          if (-not $btn) {
+            $p = Get-Process TrustTunnel -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($p -and $p.MainWindowHandle -ne 0) { $w = [System.Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle); $btn = $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+              $w.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition) | ForEach-Object { Write-Host "child: $($_.Current.AutomationId) / $($_.Current.Name) / $($_.Current.ControlType.ProgrammaticName)" } }
+            else { Write-Host "no main window handle" }
+          }
           if ($btn) { $btn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); Write-Host 'clicked disconnect' } else { Write-Host 'button not found' }
           Start-Sleep 12
           Shot 'disconnected'
@@ -72,18 +82,27 @@ jobs:
           Write-Host "client still running after disconnect: $stillRunning"
           Write-Host "IP after disconnect: $final"
           Copy-Item trusttunnel_last.log "$env:GITHUB_WORKSPACE\shots\" -ErrorAction SilentlyContinue
+          Write-Host '--- processes ---'; Get-Process TrustTunnel, trusttunnel_client -ErrorAction SilentlyContinue | Format-Table Id, ProcessName, MainWindowHandle, MainWindowTitle, SessionId | Out-String | Write-Host
+          Write-Host '--- routes ---'; route print -4 | Select-Object -First 40 | Out-String | Write-Host
+          Write-Host '--- GUI log ---'; Get-Content trusttunnel_last.log -ErrorAction SilentlyContinue | Select-Object -Last 80 | Out-String | Write-Host
+          Get-ChildItem . | Format-Table Name, Length | Out-String | Write-Host
           "before=$before`nconnected=$after`nclient_running=$running`nstill_running_after_stop=$stillRunning`nafter=$final" | Set-Content "$env:GITHUB_WORKSPACE\shots\result.txt"
           Get-Process TrustTunnel, trusttunnel_client -ErrorAction SilentlyContinue | Stop-Process -Force
           Remove-Item trusttunnel_client.toml, gui.ini, trusttunnel_last.log -ErrorAction SilentlyContinue
 
-      - name: Upload test screenshots
-        if: env.TT_TEST_LINK != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: shots/
+      - name: Publish test results to ci-results branch
+        if: always() && env.TT_TEST_LINK != ''
+        shell: pwsh
+        run: |
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          git checkout --orphan ci-results
+          git rm -rf --cached . | Out-Null
+          git add -f shots
+          git commit -m "results $env:GITHUB_RUN_ID"
+          git push -f origin ci-results
 
       - name: Upload package
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: TrustTunnel-Windows
