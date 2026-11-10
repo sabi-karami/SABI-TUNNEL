@@ -26,7 +26,7 @@ namespace TT
         DateTime connectedAt, connectStart, lastProbe;
         string exitIp;
         HashSet<string> serverIps = new HashSet<string>();
-        int probeBusy;
+        int probeBusy, probeCount;
         bool loading, logVisible, reallyExit, balloonShown, reconnectAfterStop;
 
         readonly StatusRing ring;
@@ -359,7 +359,8 @@ namespace TT
             bool first = state == VState.Connecting;
             connectedAt = DateTime.Now; lastError = null;
             SetState(VState.On);
-            ProbeIp(false);
+            exitIp = null; probeCount = 0;
+            lastProbe = DateTime.Now.AddSeconds(-7);   // first probe ~3 s later, after routes are installed
             if (first && !Visible) tray.ShowBalloonTip(2500, "TrustTunnel", "وصل شد ✓", ToolTipIcon.Info);
         }
 
@@ -416,7 +417,8 @@ namespace TT
             {
                 var t = now - connectedAt;
                 lblSub.Text = "مدت اتصال  " + ((int)t.TotalHours).ToString("00") + ":" + t.Minutes.ToString("00") + ":" + t.Seconds.ToString("00");
-                if (exitIp == null && (now - lastProbe).TotalSeconds > 10) ProbeIp(false);
+                bool viaServer = exitIp != null && serverIps.Contains(exitIp);
+                if (!viaServer && probeCount < 6 && (now - lastProbe).TotalSeconds > 10) { probeCount++; ProbeIp(false); }
             }
             else if (state == VState.Connecting && (now - connectStart).TotalSeconds > 5 && (now - lastProbe).TotalSeconds > 4)
             {
@@ -435,6 +437,7 @@ namespace TT
                 {
                     var rq = (HttpWebRequest)WebRequest.Create("https://api.ipify.org");
                     rq.Timeout = 6000; rq.ReadWriteTimeout = 6000; rq.Proxy = null; rq.UserAgent = "TrustTunnelGUI";
+                    rq.KeepAlive = false; rq.CachePolicy = new System.Net.Cache.RequestCachePolicy(System.Net.Cache.RequestCacheLevel.NoCacheNoStore);
                     using (var rs = rq.GetResponse())
                     using (var sr = new StreamReader(rs.GetResponseStream())) ip = sr.ReadToEnd().Trim();
                 }

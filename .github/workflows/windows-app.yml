@@ -49,7 +49,7 @@ jobs:
             $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
             $bmp.Save("$env:GITHUB_WORKSPACE\shots\$name.png"); $g.Dispose(); $bmp.Dispose()
           }
-          function Ip { try { (Invoke-WebRequest https://api.ipify.org -UseBasicParsing -TimeoutSec 15).Content.Trim() } catch { "error: $($_.Exception.Message)" } }
+          function Ip { $r = & curl.exe -s --max-time 15 -H 'Connection: close' https://api.ipify.org; if ($r) { $r.Trim() } else { 'error' } }
           New-Item -ItemType Directory "$env:GITHUB_WORKSPACE\shots" -Force | Out-Null
           Set-Location pkg/TrustTunnel
           $before = Ip; Write-Host "IP before: $before"
@@ -60,21 +60,27 @@ jobs:
           Start-Process .\TrustTunnel.exe
           Start-Sleep 30
           Shot 'connected'
+          Start-Sleep 5
+          Shot 'connected2'
           $after = Ip; Write-Host "IP while connected: $after"
           $running = [bool](Get-Process trusttunnel_client -ErrorAction SilentlyContinue)
           Write-Host "client running: $running"
           # press the big button (Disconnect) through UI Automation -> exercises the graceful Ctrl+C stop
-          $root = [System.Windows.Automation.AutomationElement]::RootElement
-          $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'btnMain')
-          $btn = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
-          if (-not $btn) { $c2 = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'btnMain'); $btn = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $c2) }
-          if (-not $btn) {
-            $p = Get-Process TrustTunnel -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($p -and $p.MainWindowHandle -ne 0) { $w = [System.Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle); $btn = $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
-              $w.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition) | ForEach-Object { Write-Host "child: $($_.Current.AutomationId) / $($_.Current.Name) / $($_.Current.ControlType.ProgrammaticName)" } }
-            else { Write-Host "no main window handle" }
+          Add-Type @'
+          using System; using System.Runtime.InteropServices;
+          public static class M { [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
+            [DllImport("user32.dll")] public static extern void mouse_event(int f,int x,int y,int d,IntPtr e); }
+          '@
+          $p = Get-Process TrustTunnel -ErrorAction SilentlyContinue | Select-Object -First 1
+          $btn = $null
+          if ($p -and $p.MainWindowHandle -ne 0) {
+            $w = [System.Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle)
+            foreach ($e in $w.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)) {
+              $r = $e.Current.BoundingRectangle
+              if ($r.Width -ge 250 -and $r.Height -ge 40 -and $r.Height -le 70) { $btn = $r }
+            }
           }
-          if ($btn) { $btn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); Write-Host 'clicked disconnect' } else { Write-Host 'button not found' }
+          if ($btn) { $x=[int]($btn.X+$btn.Width/2); $y=[int]($btn.Y+$btn.Height/2); [M]::SetCursorPos($x,$y); Start-Sleep -m 200; [M]::mouse_event(2,0,0,0,[IntPtr]::Zero); [M]::mouse_event(4,0,0,0,[IntPtr]::Zero); Write-Host "clicked disconnect at $x,$y" } else { Write-Host 'button not found' }
           Start-Sleep 12
           Shot 'disconnected'
           $stillRunning = [bool](Get-Process trusttunnel_client -ErrorAction SilentlyContinue)
