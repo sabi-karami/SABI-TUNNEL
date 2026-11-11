@@ -113,9 +113,11 @@ namespace TT
                     br.Color = Theme.A(c, rnd.Next(22, s > 1.5f ? 120 : 80));
                     g.FillEllipse(br, x - s / 2, y - s / 2, s, s);
                 }
-            for (int i = 0; i < 6; i++)
+            // a few bright twinkles, kept to the side margins so they never sit on text
+            float[] sx = { 0.03f, 0.97f, 0.03f, 0.97f }, sy = { 0.15f, 0.29f, 0.56f, 0.69f };
+            for (int i = 0; i < sx.Length; i++)
             {
-                var p = new PointF(L.X + (float)rnd.NextDouble() * L.Width, L.Y + (float)rnd.NextDouble() * L.Height);
+                var p = new PointF(L.X + sx[i] * L.Width, L.Y + sy[i] * L.Height);
                 var c = i % 3 == 0 ? Theme.Gold : i % 3 == 1 ? Theme.Turq : Color.White;
                 Gfx.Glow(g, p, 7, 7, c, 70);
                 Sparkle(g, p, 3.6f + (float)rnd.NextDouble() * 2.4f, c, 150);

@@ -471,6 +471,7 @@ namespace TT
             using (var p = new Pen(b, 1.4f)) g.DrawLine(p, w.B.X + 14, w.B.Bottom - 1.5f, w.B.Right - 14, w.B.Bottom - 1.5f);
             if (mark != null && !(icon != null && w.HoverT > 0.5f)) mark(g, new RectangleF(w.B.X + 10, w.B.Y + 10, 13, 13), Theme.A(ac, 200));
             var tr = RectangleF.Inflate(w.B, -12, 0);
+            if (mark != null || icon != null) tr = RectangleF.FromLTRB(w.B.X + 27, tr.Y, tr.Right, tr.Bottom);
             Gfx.Text(g, label, FontKit.Px(11f), Theme.Muted, new RectangleF(tr.X, w.B.Y + 8, tr.Width, 18));
             // shrink-to-fit so a full IPv4 address (or "123.4 MB") never gets an ellipsis
             var vr = new RectangleF(w.B.X + 4, w.B.Y + 26, w.B.Width - 16, 24);   // right edge aligned with the label
@@ -501,7 +502,7 @@ namespace TT
         void PaintTileUse(Graphics g, Custom w)
         {
             string v = state == VState.On && statsOk ? Gfx.Bytes(sessRx + sessTx) : "—";
-            Tile(g, w, "مصرف این اتصال", v, Theme.Text, true, null, (gg, r, c) => Glyph.Data(gg, r, c, 1.4f), Theme.Violet);
+            Tile(g, w, "مصرف اتصال", v, Theme.Text, true, null, (gg, r, c) => Glyph.Data(gg, r, c, 1.4f), Theme.Violet);
         }
 
         void PaintFooter(Graphics g, Custom w)
