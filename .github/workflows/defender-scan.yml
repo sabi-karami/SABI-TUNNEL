@@ -1,0 +1,55 @@
+name: Defender scan
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan release files with up-to-date Microsoft Defender
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $out = "$env:GITHUB_WORKSPACE\shots"; New-Item -ItemType Directory $out -Force | Out-Null
+          $log = "$out\defender.txt"
+          function L($t) { $t | Out-String | Tee-Object -FilePath $log -Append | Write-Host }
+          L (Get-MpComputerStatus | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, IsTamperProtected, AntivirusSignatureVersion | Format-List)
+          L (Get-MpPreference | Select-Object MAPSReporting, SubmitSamplesConsent, CloudBlockLevel, DisableRealtimeMonitoring, PUAProtection | Format-List)
+          try { Set-MpPreference -MAPSReporting Advanced -SubmitSamplesConsent NeverSend -PUAProtection Enabled -CloudBlockLevel High } catch { L "pref: $_" }
+          & "$env:ProgramFiles\Windows Defender\MpCmdRun.exe" -SignatureUpdate | Out-Null
+          L ("signatures: " + (Get-MpComputerStatus).AntivirusSignatureVersion)
+          $base = 'https://pub-23e05b3291174fe382a8dd4d0dc70a0e.r2.dev'
+          New-Item -ItemType Directory C:\scan -Force | Out-Null
+          Invoke-WebRequest "$base/v2.1/TrustTunnel-Windows-GUI.zip" -OutFile C:\scan\v21.zip
+          Invoke-WebRequest "$base/v2.1/TrustTunnel-Setup.exe" -OutFile C:\scan\TrustTunnel-Setup.exe
+          Invoke-WebRequest "$base/TrustTunnel-Windows-GUI.zip" -OutFile C:\scan\old.zip
+          Expand-Archive C:\scan\v21.zip C:\scan\v21 -Force
+          Expand-Archive C:\scan\old.zip C:\scan\old -Force
+          $files = @('C:\scan\TrustTunnel-Setup.exe') + (Get-ChildItem C:\scan\v21, C:\scan\old -Recurse -Include *.exe, *.dll | ForEach-Object FullName)
+          foreach ($f in $files) {
+            $h = (Get-FileHash $f -Algorithm SHA256).Hash.Substring(0, 16)
+            $r = & "$env:ProgramFiles\Windows Defender\MpCmdRun.exe" -Scan -ScanType 3 -File $f -DisableRemediation 2>&1 | Out-String
+            $hit = ($r -split "`n" | Where-Object { $_ -match 'Threat|found|Virus|Trojan|PUA|Program' }) -join ' | '
+            L ("{0}  {1}  exit={2}  {3}" -f $f, $h, $LASTEXITCODE, $hit)
+          }
+          L '--- detections ---'
+          L (Get-MpThreatDetection | Select-Object ThreatID, Resources, InitialDetectionTime | Format-List)
+          L (Get-MpThreat | Select-Object ThreatID, ThreatName, SeverityID, CategoryID | Format-List)
+          # inspect each threat id
+          foreach ($t in Get-MpThreat) { L (Get-MpThreatCatalog -ThreatID $t.ThreatID | Format-List) }
+      - name: Publish
+        if: always()
+        shell: pwsh
+        run: |
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          git checkout --orphan ci-results
+          git rm -rf --cached . | Out-Null
+          git add -f shots
+          git commit -m "defender $env:GITHUB_RUN_ID"
+          git push -f origin ci-results
