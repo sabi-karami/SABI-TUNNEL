@@ -15,9 +15,9 @@ namespace TT
         public event Action Exited;
         public bool Running { get { try { return p != null && !p.HasExited; } catch { return false; } } }
 
-        public void Start()
+        public void Start(string config = null)
         {
-            var psi = new ProcessStartInfo(Cfg.Client, "-c \"" + Cfg.Toml + "\"")
+            var psi = new ProcessStartInfo(Cfg.Client, "-c \"" + (config ?? Cfg.Toml) + "\"")
             {
                 UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Cfg.Dir,
                 RedirectStandardOutput = true, RedirectStandardError = true,

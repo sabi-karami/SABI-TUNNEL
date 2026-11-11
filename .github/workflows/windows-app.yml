@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release:
-        description: 'Publish the build as GitHub release v3.0.0 (setup, zip, SHA256SUMS)'
+        description: 'Publish the build as GitHub release v3.0.1 (setup, zip, SHA256SUMS)'
         type: boolean
         default: false
   push:
@@ -13,7 +13,7 @@ on:
 
 env:
   CLIENT_VERSION: '1.1.11'
-  APP_VERSION: '3.0.0'
+  APP_VERSION: '3.0.1'
 
 concurrency:
   group: windows-app-${{ github.ref }}
@@ -86,6 +86,19 @@ jobs:
           Write-Host "exit: $($p.ExitCode)"
           if (Test-Path "$env:GITHUB_WORKSPACE\build\trusttunnel_gui_error.log") { Get-Content "$env:GITHUB_WORKSPACE\build\trusttunnel_gui_error.log" }
           Get-ChildItem $d -ErrorAction SilentlyContinue | Format-Table Name, Length
+
+      - name: Self-test (relay links, Telegram RTL marks, DNS-over-HTTPS fallback, wizard import)
+        timeout-minutes: 4
+        shell: pwsh
+        run: |
+          $t = Join-Path $env:RUNNER_TEMP 'tt-selftest'
+          Copy-Item pkg\TrustTunnel $t -Recurse -Force
+          $out = "$env:GITHUB_WORKSPACE\shots\selftest.txt"
+          $p = Start-Process "$t\TrustTunnel.exe" -ArgumentList "--selftest=$out" -PassThru -Wait
+          if (Test-Path $out) { Get-Content $out -Encoding utf8 } else { Write-Host 'no selftest output' }
+          if (Test-Path "$t\trusttunnel_gui_error.log") { Get-Content "$t\trusttunnel_gui_error.log" }
+          Write-Host "exit: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { exit 1 }
 
       - name: Live UI test against the real server
         if: env.TT_TEST_LINK != ''

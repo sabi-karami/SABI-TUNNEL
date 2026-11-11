@@ -20,13 +20,15 @@ namespace TT
     sealed class MainForm : GlassForm
     {
         const float WW = 380, HH = 664;
-        public const string GuiVersion = "3.0.0";
+        public const string GuiVersion = "3.0.1";
         public static readonly string[] Cmds = { "show", "toggle", "connect", "disconnect", "settings", "home", "log", "import", "bypass", "servers", "addlink", "quit" };
 
         readonly bool startInTray;
         readonly ClientRunner runner = new ClientRunner();
         VState state = VState.Off;
         volatile bool userStop;
+        int connectSeq;      // bumped when a pending host-name lookup is abandoned (disconnect / another connect)
+        bool resolving;      // Connect() is resolving host-name server addresses before starting the client
         volatile string lastError;
         DateTime connectedAt, connectStart, lastProbe, lastPing;
         string exitIp;
@@ -784,7 +786,7 @@ namespace TT
                 case "show": ShowMain(); break;
                 case "toggle": ToggleConnect(); break;
                 case "connect": if (state == VState.Off) Connect(); break;
-                case "disconnect": if (runner.Running) Disconnect(); break;
+                case "disconnect": if (runner.Running || resolving) Disconnect(); break;
                 case "settings": ShowMain(); GoSettings(); break;
                 case "home": ShowMain(); GoMain(); break;
                 case "log": ShowLog(); break;
@@ -1139,6 +1141,7 @@ namespace TT
         void Connect()
         {
             if (runner.Running) return;
+            if (resolving) { connectSeq++; resolving = false; }      // e.g. switched server while the previous one was being looked up
             if (!Cfg.Exists && !ImportFlow()) return;
             try { Cfg.ApplyBypass(); } catch (Exception ex) { AddLog("[gui] bypass: " + ex.Message); }
             serverIps = Cfg.ServerIps();
@@ -1147,9 +1150,38 @@ namespace TT
             connectStart = DateTime.Now; lastProbe = DateTime.MinValue; lastPing = DateTime.MinValue;
             ResetStats();
             try { File.WriteAllText(LogPath, "TrustTunnel GUI " + GuiVersion + " log " + DateTime.Now.ToString("s") + "\r\n"); } catch { }
-            SetState(VState.Connecting);
+            var addrs = Cfg.Addresses();
+            bool names = addrs.Any(a => { Resolver.Split(a, out var h, out _); return h.Length > 0 && !Resolver.IsIp(h); });
+            if (!names) { SetState(VState.Connecting); StartClient(Cfg.Toml); return; }
+
+            // Host-name (relay) addresses: resolve them here, with a DNS-over-HTTPS fallback for filtered answers,
+            // and hand the client a copy of the config with the IPs. The saved server keeps the names.
+            SetState(VState.Connecting, "پیدا کردن نشانی سرور…");
+            int seq = ++connectSeq; resolving = true;
+            var id = Profiles.ActiveId;
+            Task.Run(() => Resolver.ForRun(addrs, AddLog)).ContinueWith(t => Post(() =>
+            {
+                if (seq != connectSeq) return;                       // abandoned meanwhile
+                resolving = false;
+                if (state != VState.Connecting || runner.Running) return;
+                if (!Cfg.Exists || Profiles.ActiveId != id) { SetState(Cfg.Exists ? VState.Off : VState.NoConfig); return; }
+                var list = t.Status == TaskStatus.RanToCompletion ? t.Result : null;
+                var config = Cfg.Toml;
+                if (list != null)
+                {
+                    try { config = Cfg.WriteRunToml(list); }
+                    catch (Exception ex) { AddLog("[gui] run config: " + ex.Message); }
+                    foreach (var a in list) { Resolver.Split(a, out var h, out _); serverIps.Add(h); }
+                }
+                SetState(VState.Connecting);
+                StartClient(config);
+            }));
+        }
+
+        void StartClient(string config)
+        {
             AddLog("[gui] starting trusttunnel_client (" + (seg.Selected == 1 ? "http3" : "http2") + ")");
-            try { runner.Start(); }
+            try { runner.Start(config); }
             catch (Exception ex) { SetState(VState.Off, "اجرای کلاینت ممکن نشد: " + ex.Message, Theme.Danger); }
         }
 
@@ -1161,6 +1193,14 @@ namespace TT
 
         void Disconnect(Action after = null)
         {
+            if (resolving)
+            {
+                connectSeq++; resolving = false; userStop = true;
+                AddLog("[gui] connect cancelled");
+                SetState(Cfg.Exists ? VState.Off : VState.NoConfig);
+                after?.Invoke();
+                return;
+            }
             if (!runner.Running) { after?.Invoke(); return; }
             if (after != null) afterStop += after;
             if (state == VState.Stopping) return;
@@ -1181,6 +1221,7 @@ namespace TT
             bool unexpected = !userStop;
             var err = lastError;
             AddLog("[gui] client exited");
+            try { File.Delete(Cfg.RunToml); } catch { }
             exitIp = null;
             SetState(Cfg.Exists ? VState.Off : VState.NoConfig,
                      unexpected ? (err ?? "اتصال به‌طور غیرمنتظره بسته شد؛ گزارش را ببینید.") : null, unexpected ? Theme.Danger : (Color?)null);
@@ -1204,9 +1245,10 @@ namespace TT
 
         // =============================================================== client output
 
-        static string Translate(string why)
+        internal static string Translate(string why)
         {
             var w = (why ?? "").ToLowerInvariant();
+            if (w.Contains("resolve")) return "نشانی دامنه‌ی سرور پیدا نشد (DNS)؛ اینترنت را بررسی کنید";
             if (w.Contains("auth") || w.Contains("407")) return "نام کاربری یا رمز پذیرفته نشد (کاربر غیرفعال یا حذف شده؟)";
             if (w.Contains("timed out") || w.Contains("timeout")) return "سرور پاسخ نمی‌دهد؛ اینترنت یا مسدودی را بررسی کنید";
             if (w.Contains("refused")) return "اتصال توسط سرور رد شد";
@@ -1242,6 +1284,10 @@ namespace TT
                 return;
             }
             if (line.IndexOf("Proxy authentication required", StringComparison.OrdinalIgnoreCase) >= 0) { lastError = Translate("auth"); return; }
+            if (line.IndexOf("Failed to resolve endpoint address", StringComparison.Ordinal) >= 0 ||
+                line.IndexOf("Failed to resolve any endpoint", StringComparison.Ordinal) >= 0) { lastError = Translate("resolve"); return; }
+            var fatal = Regex.Match(line, @"run_client: Error at \S+?:\d+: (.+)$");
+            if (fatal.Success) { lastError = Translate(fatal.Groups[1].Value.Trim()) ?? lastError; return; }
             int k = line.IndexOf("Error: ", StringComparison.Ordinal);
             if (k >= 0) lastError = Translate(line.Substring(k + 7).Trim()) ?? lastError;
         }
@@ -1343,7 +1389,8 @@ namespace TT
         {
             if (Interlocked.Exchange(ref pingBusy, 1) == 1) return;
             lastPing = DateTime.Now;
-            var addr = serverIps.FirstOrDefault(i => !i.Contains(":")) ?? serverIps.FirstOrDefault();
+            var addr = serverIps.FirstOrDefault(i => IPAddress.TryParse(i, out var a) && a.AddressFamily == AddressFamily.InterNetwork)
+                       ?? serverIps.FirstOrDefault(i => IPAddress.TryParse(i, out _)) ?? serverIps.FirstOrDefault();
             int port = serverPort;
             if (addr == null) { Interlocked.Exchange(ref pingBusy, 0); return; }
             Task.Run(() =>
@@ -1351,7 +1398,8 @@ namespace TT
                 int ms = -1;
                 try
                 {
-                    var ip = IPAddress.Parse(addr);
+                    if (!IPAddress.TryParse(addr, out var ip))   // a host name that could not be resolved before connecting
+                        ip = Dns.GetHostAddresses(addr).FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) ?? throw new SocketException();
                     using (var s = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp))
                     {
                         var sw = Stopwatch.StartNew();

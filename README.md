@@ -4,7 +4,7 @@
 
 <br>
 
-<img alt="version" src="https://img.shields.io/badge/version-3.0.0-8b5cf6?style=for-the-badge&labelColor=0d102c">
+<img alt="version" src="https://img.shields.io/badge/version-3.0.1-8b5cf6?style=for-the-badge&labelColor=0d102c">
 <img alt="protocol" src="https://img.shields.io/badge/HTTP%2F2%20%C2%B7%20HTTP%2F3-QUIC-2de2e6?style=for-the-badge&labelColor=0d102c">
 <img alt="platforms" src="https://img.shields.io/badge/Android%20%C2%B7%20iOS%20%C2%B7%20Windows-ready-f5c76b?style=for-the-badge&labelColor=0d102c">
 <img alt="cloud" src="https://img.shields.io/badge/AWS%20EC2-Cloudflare%20DNS-ff4fd8?style=for-the-badge&labelColor=0d102c">
@@ -161,7 +161,7 @@ android-app/            برنامه‌ی اندروید «شب فیروزه» (
 
 یک برنامه‌ی گرافیکی فارسی برای ویندوز ۱۰/۱۱ که روی کلاینت رسمی TrustTunnel (`trusttunnel_client.exe` + `wintun.dll`) ساخته شده است. کد آن در پوشه‌ی `windows-gui/` است.
 
-**دانلود (نسخه‌ی ۳٫۰٫۰):** از صفحه‌ی اشتراک هر کاربر در پنل (از خود سرور)، یا از Release با برچسب [`v3.0.0`](../../releases/tag/v3.0.0) همین مخزن.
+**دانلود (نسخه‌ی ۳٫۰٫۱):** از صفحه‌ی اشتراک هر کاربر در پنل (از خود سرور)، یا از Release با برچسب [`v3.0.1`](../../releases/tag/v3.0.1) همین مخزن.
 
 - `TrustTunnel-Setup.exe`: نصب‌کننده (پیشنهادی)؛ میانبر، ثبت لینک‌های `tt://` و حذف از Settings ← Apps
 - `TrustTunnel-Windows-GUI.zip`: نسخه‌ی پرتابل بدون نصب

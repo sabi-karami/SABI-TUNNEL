@@ -31,6 +31,20 @@ namespace TT
         public static bool Exists => File.Exists(Toml);
         public static string NewToml => Path.Combine(Dir, "trusttunnel_client.new.toml");
 
+        /// <summary>The copy handed to the client: the live config with host-name addresses replaced by resolved IPs.
+        /// The live file (and the saved server) keep the names.</summary>
+        public static string RunToml => Path.Combine(Dir, "trusttunnel_client.run.toml");
+
+        public static string WriteRunToml(List<string> addresses)
+        {
+            var t = File.ReadAllText(Toml);
+            var re = new Regex(@"(?m)^([ \t]*addresses[ \t]*=)[^\r\n]*");
+            if (!re.IsMatch(t)) return Toml;
+            t = re.Replace(t, m => m.Groups[1].Value + " [" + string.Join(", ", addresses.Select(a => "\"" + a + "\"")) + "]", 1);
+            File.WriteAllText(RunToml, t, Utf8);
+            return RunToml;
+        }
+
         public static string Get(string key) => Exists ? GetFrom(Toml, key) : null;
 
         /// <summary>Reads a top-level "key = value" from any client TOML file.</summary>
@@ -113,6 +127,7 @@ namespace TT
             link = DeepLink.Normalize(link);
             if (!link.StartsWith("tt://", StringComparison.OrdinalIgnoreCase)) return "لینک باید با tt:// شروع شود.";
             if (!Regex.IsMatch(link, "^tt://\\?[A-Za-z0-9_\\-=]+$")) return "لینک ناقص یا خراب است؛ کامل کپی کنید.";
+            var bad = DeepLink.Check(link); if (bad != null) return bad;
             if (!File.Exists(Wizard)) return "فایل setup_wizard.exe کنار برنامه نیست.";
             var tmp = NewToml;
             try { File.Delete(tmp); } catch { }
@@ -143,10 +158,44 @@ namespace TT
         /// <summary>Windows hands URL-protocol links over as "tt:///?…" (and may percent-encode); bring them back to "tt://?…".</summary>
         public static string Normalize(string link)
         {
-            var s = (link ?? "").Trim().Trim('"', '\'', ' ');
+            // Telegram and RTL editors add invisible direction marks / zero-width spaces (Unicode Cf) around or inside links.
+            var s = Regex.Replace(link ?? "", @"\p{Cf}", "").Trim().Trim('"', '\'', ' ', '`', '<', '>', '«', '»');
             if (s.IndexOf('%') >= 0) { try { s = Uri.UnescapeDataString(s); } catch { } }
+            var m = Regex.Match(s, @"tt:/*\?[A-Za-z0-9_\-=]+", RegexOptions.IgnoreCase);   // the link may sit inside a longer message
+            if (m.Success) s = m.Value;
             s = Regex.Replace(s, "^tt:/*\\?", "tt://?", RegexOptions.IgnoreCase);
             return s.TrimEnd('/');
+        }
+
+        const string Cut = "لینک ناقص کپی شده (انتهایش جا مانده)؛ دوباره و کامل کپی کنید.";
+
+        /// <summary>Walks the TLV payload so a cut-off or too-new link gets a clear message instead of the wizard's
+        /// English error. Returns null when the link looks fine.</summary>
+        public static string Check(string link)
+        {
+            byte[] b;
+            try
+            {
+                var s = link.Substring(link.IndexOf('?') + 1).Replace('-', '+').Replace('_', '/').TrimEnd('=');
+                if (s.Length % 4 == 1) return Cut;
+                b = Convert.FromBase64String(s.PadRight(s.Length + (4 - s.Length % 4) % 4, '='));
+            }
+            catch { return "لینک خراب است؛ دوباره و کامل کپی کنید."; }
+            int i = 0, version = -1;
+            try
+            {
+                while (i < b.Length)
+                {
+                    ulong tag = Varint(b, ref i), len = Varint(b, ref i);
+                    if (len > (ulong)(b.Length - i)) return Cut;
+                    if (tag == 0x00 && len > 0) version = b[i];
+                    i += (int)len;
+                }
+            }
+            catch (IndexOutOfRangeException) { return Cut; }
+            if (version > 1)
+                return "این لینک برای نسخه‌ی جدیدتر TrustTunnel ساخته شده و این برنامه هنوز آن را نمی‌شناسد؛ از سرویس‌دهنده لینک معمولی بخواهید.";
+            return null;
         }
 
         public static string Name(string link)

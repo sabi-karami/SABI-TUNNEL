@@ -13,6 +13,8 @@ namespace TT
         [STAThread]
         static void Main(string[] args)
         {
+            var selftest = args.FirstOrDefault(a => a.StartsWith("--selftest=", StringComparison.OrdinalIgnoreCase));
+            if (selftest != null) { Environment.ExitCode = SelfTest.Run(selftest.Substring(11)); return; }
             var link = args.FirstOrDefault(Proto.IsLink);          // tt://… opened from a browser / QR / chat
             var cmds = args.Where(a => !Proto.IsLink(a)).Select(a => a.TrimStart('-', '/').ToLowerInvariant()).ToArray();
             if (link != null) Proto.Stash(link);
