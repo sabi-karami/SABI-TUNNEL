@@ -1,0 +1,6 @@
+signatures=1.463.246.0
+defender_SabiTunnel-Setup.exe=clean
+defender_SabiTunnel.exe=clean
+defender_setup_wizard.exe=clean
+defender_trusttunnel_client.exe=clean
+defender_wintun.dll=clean
