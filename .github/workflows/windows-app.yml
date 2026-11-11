@@ -112,12 +112,20 @@ jobs:
           $sums = foreach ($f in 'SabiTunnel-Setup.exe', 'SabiTunnel-Windows.zip') { '{0}  {1}' -f (Get-FileHash $f -Algorithm SHA256).Hash.ToLower(), $f }
           $sums | Set-Content -Encoding ascii SHA256SUMS.txt; $sums | Write-Host
 
-      - name: Keep the files for the deploy job
-        uses: actions/upload-artifact@v4
-        with:
-          name: SabiTunnel-Windows-dist
-          path: dist/
-          retention-days: 7
+      - name: Keep the files for the deploy job (rolling ci-windows pre-release, no artifact quota)
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view ci-windows --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create ci-windows --title "CI build for the panel (not for download)" --notes "Latest main build, used by the deploy job." --prerelease --latest=false --target $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          Set-Location dist
+          gh release upload ci-windows SabiTunnel-Setup.exe SabiTunnel-Windows.zip SHA256SUMS.txt --clobber
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Live UI test against the real server
         if: env.TT_TEST_LINK != ''
@@ -401,10 +409,12 @@ jobs:
       group: sabi-deploy
       cancel-in-progress: false
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: SabiTunnel-Windows-dist
-          path: dist
+      - name: Fetch the build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download ci-windows -R "$GITHUB_REPOSITORY" -D dist --clobber
+          cd dist && sha256sum -c SHA256SUMS.txt
 
       - name: Send the build to the server
         env:
