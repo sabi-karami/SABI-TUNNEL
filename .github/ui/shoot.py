@@ -44,7 +44,7 @@ class Hd(http.server.BaseHTTPRequestHandler):
 srv=socketserver.ThreadingTCPServer(('127.0.0.1',8099),Hd); threading.Thread(target=srv.serve_forever,daemon=True).start()
 from playwright.sync_api import sync_playwright
 errs=[]
-JOBS=json.loads(os.environ.get('JOBS','null') or 'null') or [['panel','/',1440,900,True],['panel-mobile','/',400,860,False],['share','/s',430,932,True]]
+JOBS=json.loads(os.environ.get('JOBS','null') or 'null') or [['panel','/',1440,900,True],['panel-mobile','/',400,860,False],['share','/s',430,932,True]]+([['hero','/x/docs/hero.svg',1280,440,False]] if os.path.exists('docs/hero.svg') else [])
 with sync_playwright() as pw:
     b=pw.chromium.launch()
     for name,url,w,h,full in JOBS:
