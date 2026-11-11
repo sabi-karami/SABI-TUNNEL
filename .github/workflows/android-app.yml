@@ -89,8 +89,8 @@ jobs:
       - name: Dependencies and code generation
         run: make init
 
-      - name: Analyze (informational)
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
+      - name: Analyze (fails only on errors)
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Build APKs
         run: |
