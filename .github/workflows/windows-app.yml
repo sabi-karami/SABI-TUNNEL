@@ -67,6 +67,16 @@ jobs:
           Copy-Item build\TrustTunnel.exe, build\TrustTunnel.exe.config, setup\TrustTunnel-Setup.exe "$out\bin\"
           if ($bad -gt 0) { exit 1 }
 
+      - name: Render UI previews (offline, every build)
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          $d = "$env:GITHUB_WORKSPACE\shots\ui"
+          $p = Start-Process "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe" -ArgumentList "--shots=$d" -PassThru -Wait
+          Write-Host "exit: $($p.ExitCode)"
+          if (Test-Path "$env:GITHUB_WORKSPACE\build\trusttunnel_gui_error.log") { Get-Content "$env:GITHUB_WORKSPACE\build\trusttunnel_gui_error.log" }
+          Get-ChildItem $d -ErrorAction SilentlyContinue | Format-Table Name, Length
+
       - name: Live UI test against the real server
         if: env.TT_TEST_LINK != ''
         timeout-minutes: 16

@@ -135,6 +135,56 @@ namespace TT
             once.Start();
         }
 
+        // =============================================================== CI previews
+
+        /// <summary>CI only (--shots=DIR): renders each UI state to PNG offscreen. No network, no VPN.</summary>
+        public void RenderPreviews(string dir, float scale)
+        {
+            Directory.CreateDirectory(dir);
+            var L = new RectangleF(0, 0, WW, HH);
+            void Snap(string name, Page page)
+            {
+                Canvas.Show(page, 0);
+                colorT = 1; c1 = t1; c2 = t2;
+                using (var bmp = new Bitmap((int)Math.Round(WW * scale), (int)Math.Round(HH * scale)))
+                {
+                    using (var g = Graphics.FromImage(bmp)) Canvas.RenderTo(g, scale, L);
+                    bmp.Save(Path.Combine(dir, name + ".png"), System.Drawing.Imaging.ImageFormat.Png);
+                }
+            }
+            try
+            {
+                profile = "TrustTunnel"; host = ""; user = ""; profileCount = 0;
+                SetState(VState.NoConfig);
+                Snap("05-noconfig", main);
+
+                profile = "Sabi VPN"; host = "tt-oh.sahebkarami.ir"; user = "sami-pc"; profileCount = 2;
+                SetState(VState.Off);
+                Snap("10-off", main);
+
+                SetState(VState.Connecting);
+                Snap("20-connecting", main);
+
+                var rnd = new Random(3);
+                for (int i = 0; i < N; i++)
+                {
+                    sDown[i] = (float)(1.6e6 + 1.1e6 * Math.Sin(i / 5.0) + 0.6e6 * rnd.NextDouble());
+                    sUp[i] = (float)(2.2e5 + 1.4e5 * Math.Sin(i / 3.0 + 1) + 0.8e5 * rnd.NextDouble());
+                }
+                sCount = N; statsOk = true;
+                rateRx = sDown[N - 1]; rateTx = sUp[N - 1];
+                sessRx = 486L * 1024 * 1024; sessTx = 41L * 1024 * 1024;
+                exitIp = "77.112.234.99"; serverIps.Add(exitIp); pingMs = 92;
+                connectedAt = DateTime.Now.AddMinutes(-23).AddSeconds(-14);
+                SetState(VState.On);
+                status = "مدت اتصال  " + Gfx.Fa("00:23:14"); statusColor = Theme.Muted;
+                Snap("30-on", main);
+
+                Snap("40-settings", settings);
+            }
+            finally { try { tray.Visible = false; } catch { } }
+        }
+
         // =============================================================== layout
 
         void BuildChrome()

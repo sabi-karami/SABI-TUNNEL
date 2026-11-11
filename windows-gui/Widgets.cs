@@ -343,6 +343,16 @@ namespace TT
             if (Chrome != null) PaintPage(g, Chrome, 0);
         }
 
+        /// <summary>Offscreen render of the active page (used by the CI preview mode).</summary>
+        public void RenderTo(Graphics g, float scale, RectangleF L)
+        {
+            Gfx.Hq(g);
+            g.ScaleTransform(scale, scale);
+            Background?.Invoke(g, L);
+            PaintPage(g, active, 0);
+            if (Chrome != null) PaintPage(g, Chrome, 0);
+        }
+
         void PaintPage(Graphics g, Page p, float dx)
         {
             if (p == null) return;

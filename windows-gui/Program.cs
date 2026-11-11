@@ -40,6 +40,13 @@ namespace TT
                     MessageBox.Show("TrustTunnel could not start:\n\n" + ex.Message + "\n\nDetails: trusttunnel_gui_error.log", "TrustTunnel", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
+                var shots = args.FirstOrDefault(a => a.StartsWith("--shots=", StringComparison.OrdinalIgnoreCase));
+                if (shots != null)
+                {
+                    try { form.RenderPreviews(shots.Substring(8), 2f); }
+                    catch (Exception ex) { Crash(ex); Environment.ExitCode = 2; }
+                    return;
+                }
                 Application.Run(form);
                 GC.KeepAlive(mutex);
             }
