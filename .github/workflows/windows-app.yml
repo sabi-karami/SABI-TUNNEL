@@ -43,9 +43,29 @@ jobs:
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
-          & $iscc /Qp "/DPkgDir=$env:GITHUB_WORKSPACE\pkg\TrustTunnel" /DAppVer=2.1.0 "/O$env:GITHUB_WORKSPACE\setup" windows-gui\installer.iss
+          & $iscc /Qp "/DPkgDir=$env:GITHUB_WORKSPACE\pkg\TrustTunnel" /DAppVer=2.1.1 "/O$env:GITHUB_WORKSPACE\setup" windows-gui\installer.iss
           if ($LASTEXITCODE -ne 0) { exit 1 }
           Get-ChildItem setup | Format-Table Name, Length
+
+      - name: Microsoft Defender scan (fails the build on any detection)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $out = "$env:GITHUB_WORKSPACE\shots"; New-Item -ItemType Directory "$out\bin" -Force | Out-Null
+          & "$env:ProgramFiles\Windows Defender\MpCmdRun.exe" -SignatureUpdate | Out-Null
+          $sig = (Get-MpComputerStatus).AntivirusSignatureVersion
+          $bad = 0; $lines = @("signatures=$sig")
+          $files = @("$env:GITHUB_WORKSPACE\setup\TrustTunnel-Setup.exe") + (Get-ChildItem pkg\TrustTunnel -Include *.exe, *.dll -Recurse | ForEach-Object FullName)
+          foreach ($f in $files) {
+            $r = & "$env:ProgramFiles\Windows Defender\MpCmdRun.exe" -Scan -ScanType 3 -File $f -DisableRemediation 2>&1 | Out-String
+            $code = $LASTEXITCODE
+            $threat = ([regex]::Match($r, 'Threat\s*:\s*(\S+)')).Groups[1].Value
+            if ($code -ne 0) { $bad++ }
+            $lines += ("defender_{0}={1}" -f (Split-Path $f -Leaf), $(if ($code -eq 0) { 'clean' } else { "DETECTED $threat" }))
+          }
+          $lines | Set-Content "$out\defender.txt"; $lines | Write-Host
+          Copy-Item build\TrustTunnel.exe, build\TrustTunnel.exe.config, setup\TrustTunnel-Setup.exe "$out\bin\"
+          if ($bad -gt 0) { exit 1 }
 
       - name: Live UI test against the real server
         if: env.TT_TEST_LINK != ''
@@ -277,7 +297,7 @@ jobs:
           Copy-Item "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe", "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe.config", "$env:GITHUB_WORKSPACE\setup\TrustTunnel-Setup.exe" "$shots\bin\"
 
       - name: Publish test results to ci-results branch
-        if: always() && env.TT_TEST_LINK != ''
+        if: always()
         shell: pwsh
         run: |
           git config user.name ci; git config user.email ci@users.noreply.github.com

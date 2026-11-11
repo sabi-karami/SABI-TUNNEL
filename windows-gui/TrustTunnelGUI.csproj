@@ -8,7 +8,7 @@
     <RootNamespace>TT</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>2.1.0</Version>
+    <Version>2.1.1</Version>
     <Product>TrustTunnel for Windows (Sabi VPN)</Product>
     <AssemblyTitle>TrustTunnel</AssemblyTitle>
     <Company>sabi-karami</Company>

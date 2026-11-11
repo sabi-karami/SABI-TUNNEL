@@ -20,7 +20,7 @@ namespace TT
     sealed class MainForm : GlassForm
     {
         const float WW = 380, HH = 664;
-        public const string GuiVersion = "2.1";
+        public const string GuiVersion = "2.1.1";
         public static readonly string[] Cmds = { "show", "toggle", "connect", "disconnect", "settings", "home", "log", "import", "bypass", "servers", "addlink", "quit" };
 
         readonly bool startInTray;
@@ -849,7 +849,20 @@ namespace TT
         void CopyIp()
         {
             if (state != VState.On || string.IsNullOrEmpty(exitIp)) return;
-            try { Clipboard.SetText(exitIp); Toast("IP کپی شد"); } catch { }
+            try { CopyText(exitIp); Toast("IP کپی شد"); } catch { }
+        }
+
+        /// <summary>Copies via a throw-away text box (WM_COPY) instead of the Clipboard API.</summary>
+        void CopyText(string s)
+        {
+            using (var tb = new TextBox { Text = s, Visible = false })
+            {
+                Controls.Add(tb);
+                tb.CreateControl();
+                tb.SelectAll();
+                tb.Copy();
+                Controls.Remove(tb);
+            }
         }
 
         static string LogPath => Path.Combine(Cfg.Dir, "trusttunnel_last.log");

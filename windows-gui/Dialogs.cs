@@ -164,7 +164,7 @@ namespace TT
         public ImportDialog(string prefill = null) : base("وارد کردن لینک", 460, 340)
         {
             Subtitle = "";
-            var desc = "لینک اتصال کاربر (که با tt شروع می‌شود) را از پنل مدیریت کپی کنید. اگر در کلیپ‌بورد باشد، خودکار همین‌جا قرار می‌گیرد.";
+            var desc = "لینک اتصال کاربر (که با tt شروع می‌شود) را از پنل مدیریت کپی کنید. بعد دکمه‌ی «چسباندن» را بزنید یا Ctrl+V.";
             Page.Over = g =>
             {
                 Gfx.Text(g, desc, FontKit.Px(13f), Theme.Muted, new RectangleF(24, 52, LW - 48, 44), Al.Right, true, true, StringAlignment.Near);
@@ -174,7 +174,7 @@ namespace TT
             tb = Field(new RectangleF(24, 104, LW - 48, 118), true);
             tb.AcceptsReturn = false;
             tb.TextChanged += (s, e) => { if (error != null) { error = null; Canvas.Invalidate(); } };
-            if (!string.IsNullOrEmpty(prefill)) tb.Text = prefill.Trim(); else TryPaste(false);
+            if (!string.IsNullOrEmpty(prefill)) tb.Text = prefill.Trim();
 
             float by = 266;
             var ok = Page.Add(new PillButton { Text = "ذخیره", B = new RectangleF(LW - 24 - 132, by, 132, 46), FontPx = 14.5f });
@@ -187,11 +187,12 @@ namespace TT
 
         void TryPaste(bool explicitly)
         {
+            // Only on an explicit click, through the text box itself (no background clipboard reads).
+            if (!explicitly) return;
             try
             {
-                var c = (Clipboard.GetText() ?? "").Trim();
-                if (c.StartsWith("tt://", StringComparison.OrdinalIgnoreCase)) { tb.Text = c; return; }
-                if (explicitly) { error = "در کلیپ‌بورد لینک اتصال پیدا نشد."; Canvas.Invalidate(); }
+                tb.Focus(); tb.SelectAll(); tb.Paste();
+                if (!Link.StartsWith("tt:", StringComparison.OrdinalIgnoreCase)) { error = "لینک اتصال چسبانده نشد؛ لینک را کپی و دوباره امتحان کنید."; Canvas.Invalidate(); }
             }
             catch { }
         }
@@ -251,7 +252,7 @@ namespace TT
             float by = 438;
             Page.Add(new PillButton { Text = "بستن", Style = PillStyle.Ghost, B = new RectangleF(LW - 24 - 110, by, 110, 44), FontPx = 14, Click = () => Hide() });
             Page.Add(new PillButton { Text = "کپی همه", Style = PillStyle.Ghost, B = new RectangleF(LW - 24 - 110 - 10 - 120, by, 120, 44), FontPx = 13.5f, Weight = 500,
-                                      Icon = (g, r, c) => Glyph.Copy(g, r, c), Click = () => { try { if (tb.TextLength > 0) Clipboard.SetText(tb.Text); } catch { } } });
+                                      Icon = (g, r, c) => Glyph.Copy(g, r, c), Click = () => { try { if (tb.TextLength > 0) { tb.SelectAll(); tb.Copy(); } } catch { } } });
             Page.Add(new PillButton { Text = "باز کردن پوشه", Style = PillStyle.Ghost, B = new RectangleF(24, by, 150, 44), FontPx = 13.5f, Weight = 500,
                                       Icon = (g, r, c) => Glyph.Folder(g, r, c), Click = () => Sys.OpenFolder() });
         }
