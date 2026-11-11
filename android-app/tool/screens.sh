@@ -9,12 +9,12 @@ DEMO_LINK='tt://?AAEBAQ5kZS5leGFtcGxlLmNvbQIQMjAzLjAuMTEzLjEwOjQ0MwUEZGVtbwYNZGV
 # Emulator-only: dismiss "System UI isn't responding" style dialogs.
 unstick() { for _ in 1 2 3; do tap_text '=Wait' >/dev/null 2>&1 || return 0; sleep 2; done; }
 shot() { sleep "${2:-3}"; unstick; adb exec-out screencap -p > "$OUT/$1.png"; dump "$1"; echo "shot $1"; }
-dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml "$OUT/$1.xml" >/dev/null 2>&1 || true; }
+dump() { timeout 25 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml "$OUT/$1.xml" >/dev/null 2>&1 || true; }
 
 # Taps the first node whose text or content-desc contains one of the given strings.
 tap_text() {
-  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
-  adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1 || return 1
+  timeout 25 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+  timeout 15 adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1 || return 1
   local xy
   xy=$(python3 - "$@" <<'PY'
 import re, sys, xml.etree.ElementTree as ET

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:trusttunnel/widgets/firuze/firuze_palette.dart';
 
 /// Animated «شب فیروزه» backdrop: night gradient, drifting aurora, twinkling
@@ -13,37 +14,92 @@ class NightSky extends StatefulWidget {
 }
 
 class _NightSkyState extends State<NightSky> with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 28),
-  );
+  static const _cycle = Duration(seconds: 28);
+
+  /// The sky moves slowly, so ~20 fps looks identical to 60 fps while costing
+  /// a third of the work (and of the glass-card re-blurs on top of it).
+  static const _frameInterval = Duration(milliseconds: 50);
+
+  final ValueNotifier<double> _phase = ValueNotifier<double>(0.3);
+  late final Ticker _ticker = createTicker(_onTick);
+  Duration _lastFrame = Duration.zero;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     if (reduceMotion) {
-      _controller.stop();
-    } else if (!_controller.isAnimating) {
-      _controller.repeat();
+      if (_ticker.isActive) {
+        _ticker.stop();
+      }
+    } else if (!_ticker.isActive) {
+      _lastFrame = Duration.zero;
+      _ticker.start();
     }
+  }
+
+  void _onTick(Duration elapsed) {
+    if (elapsed - _lastFrame < _frameInterval && _lastFrame != Duration.zero) {
+      return;
+    }
+    _lastFrame = elapsed;
+    _phase.value = (elapsed.inMilliseconds % _cycle.inMilliseconds) / _cycle.inMilliseconds;
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _ticker.dispose();
+    _phase.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => RepaintBoundary(
-    child: CustomPaint(
-      painter: _NightSkyPainter(_controller),
-      isComplex: true,
-      willChange: true,
-      child: const SizedBox.expand(),
-    ),
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: [
+      // Static layer: painted once and cached by its RepaintBoundary.
+      const RepaintBoundary(
+        child: CustomPaint(
+          painter: _StaticSkyPainter(),
+          isComplex: true,
+          child: SizedBox.expand(),
+        ),
+      ),
+      RepaintBoundary(
+        child: CustomPaint(
+          painter: _NightSkyPainter(_phase),
+          willChange: true,
+          child: const SizedBox.expand(),
+        ),
+      ),
+    ],
   );
+}
+
+class _StaticSkyPainter extends CustomPainter {
+  const _StaticSkyPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) {
+      return;
+    }
+    final rect = Offset.zero & size;
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Firuze.nightTop, Firuze.night, Firuze.nightDeep],
+          stops: [0, 0.55, 1],
+        ).createShader(rect),
+    );
+    _NightSkyPainter._paintGirih(canvas, size);
+  }
+
+  @override
+  bool shouldRepaint(covariant _StaticSkyPainter oldDelegate) => false;
 }
 
 class _Star {
@@ -57,7 +113,7 @@ class _Star {
 }
 
 class _NightSkyPainter extends CustomPainter {
-  final Animation<double> animation;
+  final ValueListenable<double> animation;
 
   _NightSkyPainter(this.animation) : super(repaint: animation);
 
@@ -88,17 +144,6 @@ class _NightSkyPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
     final v = animation.value * math.pi * 2;
-
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Firuze.nightTop, Firuze.night, Firuze.nightDeep],
-          stops: [0, 0.55, 1],
-        ).createShader(rect),
-    );
 
     _glow(
       canvas,
@@ -149,8 +194,6 @@ class _NightSkyPainter extends CustomPainter {
         ).createShader(rect),
     );
 
-    _paintGirih(canvas, size);
-
     final starPaint = Paint();
     for (final star in _stars) {
       final twinkle = 0.5 + 0.5 * math.sin(v * star.speed + star.phase);
@@ -179,7 +222,7 @@ class _NightSkyPainter extends CustomPainter {
     }
   }
 
-  void _paintGirih(Canvas canvas, Size size) {
+  static void _paintGirih(Canvas canvas, Size size) {
     const step = 72.0;
     final paint = Paint()
       ..style = PaintingStyle.stroke
