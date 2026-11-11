@@ -62,7 +62,8 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -u "token:${GPR_KEY}" \
             "https://maven.pkg.github.com/TrustTunnel/TrustTunnelClient/${TT_LIB}")
           echo "GitHub Packages answered HTTP ${code}"
-          if [ "$code" != "200" ]; then
+          # 200, or a 302 redirect to the package storage, both mean access is granted.
+          if [ "$code" != "200" ] && [ "$code" != "302" ]; then
             echo "::error::Cannot read the TrustTunnel library from GitHub Packages (HTTP ${code}). Add a repository secret GPR_KEY holding a classic personal access token with the read:packages scope."
             exit 1
           fi
