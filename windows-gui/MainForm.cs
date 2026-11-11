@@ -20,7 +20,7 @@ namespace TT
     sealed class MainForm : GlassForm
     {
         const float WW = 380, HH = 664;
-        public const string GuiVersion = "3.0.1";
+        public const string GuiVersion = "3.0.2";
         public static readonly string[] Cmds = { "show", "toggle", "connect", "disconnect", "settings", "home", "log", "import", "bypass", "servers", "addlink", "quit" };
 
         readonly bool startInTray;
@@ -30,6 +30,9 @@ namespace TT
         int connectSeq;      // bumped when a pending host-name lookup is abandoned (disconnect / another connect)
         bool resolving;      // Connect() is resolving host-name server addresses before starting the client
         volatile string lastError;
+        volatile bool gaveUp, clientPinged, clientPingFailed;   // this run: the client gave up / its ping reached a server / a ping failed
+        int diagSeq;         // bumped by Connect(), so a diagnosis of the previous attempt that is still running is dropped
+        List<string> runAddrs = new List<string>();   // the addresses the client was given (the IPs when names were resolved)
         DateTime connectedAt, connectStart, lastProbe, lastPing;
         string exitIp;
         HashSet<string> serverIps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1147,10 +1150,12 @@ namespace TT
             serverIps = Cfg.ServerIps();
             serverPort = Cfg.ServerPort();
             lastError = null; userStop = false; exitIp = null; reconnectAfterStop = false;
+            gaveUp = clientPinged = clientPingFailed = false; diagSeq++;
             connectStart = DateTime.Now; lastProbe = DateTime.MinValue; lastPing = DateTime.MinValue;
             ResetStats();
             try { File.WriteAllText(LogPath, "TrustTunnel GUI " + GuiVersion + " log " + DateTime.Now.ToString("s") + "\r\n"); } catch { }
             var addrs = Cfg.Addresses();
+            runAddrs = addrs;
             bool names = addrs.Any(a => { Resolver.Split(a, out var h, out _); return h.Length > 0 && !Resolver.IsIp(h); });
             if (!names) { SetState(VState.Connecting); StartClient(Cfg.Toml); return; }
 
@@ -1169,7 +1174,7 @@ namespace TT
                 var config = Cfg.Toml;
                 if (list != null)
                 {
-                    try { config = Cfg.WriteRunToml(list); }
+                    try { config = Cfg.WriteRunToml(list); if (config == Cfg.RunToml) runAddrs = list; }
                     catch (Exception ex) { AddLog("[gui] run config: " + ex.Message); }
                     foreach (var a in list) { Resolver.Split(a, out var h, out _); serverIps.Add(h); }
                 }
@@ -1223,11 +1228,68 @@ namespace TT
             AddLog("[gui] client exited");
             try { File.Delete(Cfg.RunToml); } catch { }
             exitIp = null;
-            SetState(Cfg.Exists ? VState.Off : VState.NoConfig,
-                     unexpected ? (err ?? "اتصال به‌طور غیرمنتظره بسته شد؛ گزارش را ببینید.") : null, unexpected ? Theme.Danger : (Color?)null);
-            if (unexpected) Notify("اتصال قطع شد. " + (err ?? ""), ToolTipIcon.Warning);
+            // the client gave up on its own: find out why before telling the user
+            bool diagnose = unexpected && gaveUp && Cfg.Exists && !reallyExit && !reconnectAfterStop && runAddrs.Count > 0;
+            if (diagnose) SetState(VState.Off, "اتصال برقرار نشد؛ در حال بررسی علت…", Theme.Wait1);
+            else
+            {
+                SetState(Cfg.Exists ? VState.Off : VState.NoConfig,
+                         unexpected ? (err ?? "اتصال به‌طور غیرمنتظره بسته شد؛ گزارش را ببینید.") : null, unexpected ? Theme.Danger : (Color?)null);
+                if (unexpected) Notify("اتصال قطع شد. " + (err ?? ""), ToolTipIcon.Warning);
+            }
             FireAfterStop();
             if (reconnectAfterStop && !reallyExit) { reconnectAfterStop = false; Connect(); }
+            else if (diagnose) Diagnose();
+        }
+
+        /// <summary>The client gave up: every connect attempt failed. Checks from this PC whether the server answers at
+        /// all (Probe) and puts the likely cause in plain words instead of "Number of connection attempts exceeded".
+        /// When only the big post-quantum hello is lost on the way, offers to switch it off for this server.</summary>
+        void Diagnose()
+        {
+            int seq = diagSeq;
+            var id = Profiles.ActiveId;
+            var addrs = runAddrs.ToList();
+            var sni = ProbeSni();
+            var random = Cfg.Get("client_random") ?? "";
+            bool pq = (Cfg.Get("post_quantum_group_enabled") ?? "true").Trim() != "false";
+            bool pinged = clientPinged, pingFailed = clientPingFailed;
+            var other = seg.Selected == 1 ? "HTTP/2" : "HTTP/3";
+            AddLog("[gui] diagnosing: " + string.Join(", ", addrs) + ", SNI " + (sni.Length > 0 ? sni : "none") +
+                   (pq ? ", post-quantum on" : ", post-quantum off") +
+                   (pinged ? ", the client's ping reached a server" : pingFailed ? ", the client's pings failed" : ""));
+            Task.Run(() => Probe.Run(addrs, sni, random, pq, AddLog)).ContinueWith(t => Post(() =>
+            {
+                if (seq != diagSeq || state != VState.Off || Profiles.ActiveId != id) return;   // connecting again, or another server
+                var results = t.Status == TaskStatus.RanToCompletion ? t.Result : new List<Probe.Result>();
+                var kind = Probe.Classify(results);
+                var text = Probe.Explain(kind, results, pinged, pingFailed, other, out var brief);
+                AddLog("[gui] diagnosis: " + kind);
+                lastError = brief;
+                SetState(VState.Off, brief, Theme.Danger);
+                if (!Visible) { Notify("اتصال برقرار نشد: " + brief, ToolTipIcon.Warning); return; }
+                if (ModalUp()) return;
+                if (kind != Probe.Kind.BigHello || !pq) { Ui.Error(this, text); return; }
+                if (!Ui.Ask(this, text + "\n\nخاموشش کنم و دوباره وصل شوم؟")) return;
+                if (seq != diagSeq || state != VState.Off || !Cfg.Exists || Profiles.ActiveId != id) return;
+                try { Cfg.Set("post_quantum_group_enabled", "false", addIfMissing: true); Profiles.SyncActive(); }
+                catch (Exception ex) { AddLog("[gui] post-quantum: " + ex.Message); return; }
+                AddLog("[gui] post_quantum_group_enabled = false for this server");
+                Connect();
+            }));
+        }
+
+        /// <summary>The SNI the client sends: custom_sni, or the host name (the part before '|').</summary>
+        static string ProbeSni()
+        {
+            var sni = Cfg.Get("custom_sni") ?? "";
+            if (sni.Trim().Length == 0)
+            {
+                sni = Cfg.Get("hostname") ?? "";
+                int p = sni.IndexOf('|');
+                if (p >= 0) sni = sni.Substring(0, p);
+            }
+            return sni.Trim();
         }
 
         void MarkConnected()
@@ -1248,6 +1310,8 @@ namespace TT
         internal static string Translate(string why)
         {
             var w = (why ?? "").ToLowerInvariant();
+            if (w.Contains("connection attempts exceeded") || w.Contains("none of the endpoints were pinged"))
+                return "اتصال به سرور برقرار نشد (همه‌ی تلاش‌ها ناموفق بود)";
             if (w.Contains("resolve")) return "نشانی دامنه‌ی سرور پیدا نشد (DNS)؛ اینترنت را بررسی کنید";
             if (w.Contains("auth") || w.Contains("407")) return "نام کاربری یا رمز پذیرفته نشد (کاربر غیرفعال یا حذف شده؟)";
             if (w.Contains("timed out") || w.Contains("timeout")) return "سرور پاسخ نمی‌دهد؛ اینترنت یا مسدودی را بررسی کنید";
@@ -1263,6 +1327,18 @@ namespace TT
         {
             lock (pending) { pending.Enqueue(line); while (pending.Count > 3000) pending.Dequeue(); }
             if (line.IndexOf("Successfully connected to endpoint", StringComparison.Ordinal) >= 0) { Post(MarkConnected); return; }
+            if (line.IndexOf("Using endpoint: ", StringComparison.Ordinal) >= 0) clientPinged = true;   // the client's ping reached a server
+            bool pingFail = line.IndexOf("Failed to ping location", StringComparison.Ordinal) >= 0 ||
+                            line.IndexOf("None of the endpoints were pinged", StringComparison.Ordinal) >= 0;
+            if (line.IndexOf("connection attempts exceeded", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                (pingFail && line.IndexOf("Error: ", StringComparison.Ordinal) >= 0))
+                gaveUp = true;      // the client's last line before it exits; "Error: " below sets lastError
+            else if (pingFail)
+            {
+                clientPingFailed = true;
+                Post(() => { if (state == VState.Connecting && runner.Running) SetState(VState.Connecting, "سرور جواب نداد؛ تلاش دوباره…"); });
+                return;
+            }
             var pm = Regex.Match(line, @"pinger_handler.*ping=(\d+)ms");
             if (pm.Success) { int v = int.Parse(pm.Groups[1].Value); Post(() => { pingMs = v; Canvas.InvalidateLogical(tilePing.B); }); return; }
             if (line.IndexOf("Waiting recovery", StringComparison.Ordinal) >= 0)

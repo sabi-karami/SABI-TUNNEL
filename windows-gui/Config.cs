@@ -67,13 +67,16 @@ namespace TT
             return null;
         }
 
-        public static void Set(string key, string literal)
+        /// <summary>Sets "key = literal" in the live config. A missing key is left alone, or with addIfMissing put at
+        /// the top of the file, which is the top-level table.</summary>
+        public static void Set(string key, string literal, bool addIfMissing = false)
         {
             if (!Exists) return;
             var t = File.ReadAllText(Toml);
             var re = new Regex("(?m)^[ \\t]*" + Regex.Escape(key) + "[ \\t]*=[^\\r\\n]*");
-            if (!re.IsMatch(t)) return;
-            t = re.Replace(t, m => key + " = " + literal, 1);
+            if (re.IsMatch(t)) t = re.Replace(t, m => key + " = " + literal, 1);
+            else if (addIfMissing) t = key + " = " + literal + (t.Contains("\r\n") ? "\r\n" : "\n") + t;
+            else return;
             File.WriteAllText(Toml, t, Utf8);
         }
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.Text.RegularExpressions;
 
 namespace TT
 {
@@ -167,7 +168,7 @@ namespace TT
         public Place(float lat, float lon, string name) { Lat = lat; Lon = lon; Name = name; }
     }
 
-    /// <summary>Rough server location from its host name (for the route map).</summary>
+    /// <summary>Rough server location from its host name and display name (for the route map).</summary>
     static class Geo
     {
         public static readonly Place Iran = new Place(35.7f, 51.4f, "ایران");
@@ -191,11 +192,44 @@ namespace TT
             new Place(1.35f, 103.8f, "سنگاپور"), new Place(35.7f, 139.7f, "توکیو"),
         };
 
+        // Countries, as other providers name their servers ("GermanyTT7999", "🇳🇱 هلند ۲", "de.example.top"):
+        // English and Persian names and flags, checked after the city keys above.
+        static readonly string[][] countryKeys = {
+            new[] { "germany", "deutschland", "آلمان", "\U0001F1E9\U0001F1EA" },
+            new[] { "netherlands", "holland", "هلند", "\U0001F1F3\U0001F1F1" },
+            new[] { "united kingdom", "england", "britain", "انگلیس", "انگلستان", "بریتانیا", "\U0001F1EC\U0001F1E7" },
+            new[] { "france", "فرانسه", "\U0001F1EB\U0001F1F7" },
+            new[] { "finland", "فنلاند", "\U0001F1EB\U0001F1EE" },
+            new[] { "sweden", "سوئد", "\U0001F1F8\U0001F1EA" },
+            new[] { "turkey", "turkiye", "türkiye", "istanbul", "ترکیه", "استانبول", "\U0001F1F9\U0001F1F7" },
+            new[] { "united states", "america", "آمریکا", "امریکا", "\U0001F1FA\U0001F1F8" },
+            new[] { "canada", "کانادا", "\U0001F1E8\U0001F1E6" },
+            new[] { "japan", "ژاپن", "\U0001F1EF\U0001F1F5" },
+            new[] { "singapore", "سنگاپور", "\U0001F1F8\U0001F1EC" },
+        };
+        static readonly Place[] countries = {
+            new Place(50.1f, 8.7f, "آلمان"), new Place(52.4f, 4.9f, "هلند"), new Place(51.5f, -0.1f, "انگلیس"),
+            new Place(48.9f, 2.4f, "فرانسه"), new Place(60.2f, 24.9f, "فنلاند"), new Place(59.3f, 18.1f, "سوئد"),
+            new Place(41.0f, 28.98f, "ترکیه"), new Place(39.0f, -77.5f, "آمریکا"), new Place(43.7f, -79.4f, "کانادا"),
+            new Place(35.7f, 139.7f, "ژاپن"), new Place(1.35f, 103.8f, "سنگاپور"),
+        };
+        // "US 2", "tt-uk" as words (not the .us / .co.uk TLD), and a country code as the first label ("de.", "nl2.", "fr-1.")
+        static readonly Regex word = new Regex(@"(?<![a-z.])(usa|uk|us)(?![a-z])");
+        static readonly Regex label = new Regex(@"^(de|nl|uk|gb|fr|fi|se|tr|us|ca|jp|sg)(-?\d+)?\.");
+        static readonly string[] codes = { "de", "nl", "uk", "gb", "fr", "fi", "se", "tr", "us", "ca", "jp", "sg" };
+        static readonly int[] codePlace = { 0, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+
         public static Place Find(string hint)
         {
-            var h = (hint ?? "").ToLowerInvariant();
+            var h = (hint ?? "").ToLowerInvariant().Replace('\u064A', '\u06CC').Replace('\u0643', '\u06A9');   // Arabic yeh / kaf
             for (int i = 0; i < keys.Length; i++)
                 foreach (var k in keys[i]) if (h.Contains(k)) return places[i];
+            for (int i = 0; i < countryKeys.Length; i++)
+                foreach (var k in countryKeys[i]) if (h.Contains(k)) return countries[i];
+            var m = word.Match(h);
+            if (m.Success) return countries[m.Groups[1].Value == "uk" ? 2 : 7];
+            m = label.Match(h);
+            if (m.Success) return countries[codePlace[Array.IndexOf(codes, m.Groups[1].Value)]];
             return new Place(40.0f, -83.0f, "سرور");
         }
     }

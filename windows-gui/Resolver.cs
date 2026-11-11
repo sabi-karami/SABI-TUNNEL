@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -7,13 +8,15 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace TT
 {
     /// <summary>Resolves host-name server addresses (relays) before the client starts.
     /// The client asks one system resolver and gives up when that fails, and filtered networks often answer with
-    /// nothing or with the 10.10.34.x block page. Windows DNS is tried first, then DNS-over-HTTPS by IP
-    /// (Cloudflare, Google, AdGuard), so the fallback needs no DNS of its own.</summary>
+    /// nothing, with the 10.10.34.x block page or with a wrong but plausible IP. Windows DNS and DNS-over-HTTPS by IP
+    /// (Cloudflare, Google, AdGuard; no DNS of its own needed) are asked at the same time and the answers merged.</summary>
     static class Resolver
     {
         public static readonly string[] Doh =
@@ -66,20 +69,47 @@ namespace TT
             return changed ? list.Distinct().ToList() : null;
         }
 
+        sealed class Answer
+        {
+            public string Via, Why;
+            public List<string> Ips;
+            public bool Ok => Ips != null && Ips.Count > 0;
+        }
+
+        /// <summary>Asks Windows DNS and the DNS-over-HTTPS resolvers at the same time and merges their answers, Windows
+        /// first, at most six: the client pings every address and keeps one that answers, so a wrong IP from a
+        /// filtered DNS no longer sinks the connection. Null when nobody found an address.</summary>
         public static List<string> Resolve(string host, Action<string> log)
         {
-            var ips = SystemDns(host, 5000, out var why);
-            if (ips != null && ips.Count > 0) { log?.Invoke("[gui] " + host + " = " + string.Join(", ", ips) + " (Windows DNS)"); return ips; }
-            log?.Invoke("[gui] Windows DNS for " + host + ": " + why + "; trying DNS-over-HTTPS");
-            foreach (var url in Doh)
+            var win = Task.Run(() => { var ips = SystemDns(host, 5000, out var why); return new Answer { Via = "Windows DNS", Ips = ips, Why = why }; });
+            var doh = Doh.Select(url => Task.Run(() =>
             {
-                var via = new Uri(url).Host;
-                ips = QueryDoh(url, host, 4000, out why);
-                if (ips != null && ips.Count > 0) { log?.Invoke("[gui] " + host + " = " + string.Join(", ", ips) + " (DoH " + via + ")"); return ips; }
-                log?.Invoke("[gui] DoH " + via + ": " + why);
-            }
-            log?.Invoke("[gui] " + host + " could not be resolved; the client will try it itself");
-            return null;
+                var ips = QueryDoh(url, host, 4500, out var why);
+                return new Answer { Via = "DoH " + new Uri(url).Host, Ips = ips, Why = why };
+            })).ToArray();
+            var sw = Stopwatch.StartNew();
+            try { win.Wait(5500); } catch { }
+            bool winOk = win.Status == TaskStatus.RanToCompletion && win.Result.Ok;
+            // DoH gets a little longer when Windows found nothing; stop as soon as one DoH answer is in
+            long until = sw.ElapsedMilliseconds + (winOk ? 2000 : 5000);
+            while (sw.ElapsedMilliseconds < until && !doh.All(t => t.IsCompleted) && !doh.Any(t => t.Status == TaskStatus.RanToCompletion && t.Result.Ok))
+                Thread.Sleep(50);
+            var all = new[] { win }.Concat(doh).ToList();
+            var got = all.Where(t => t.Status == TaskStatus.RanToCompletion).Select(t => t.Result).ToList();
+            foreach (var a in got) log?.Invoke("[gui] " + a.Via + " for " + host + ": " + (a.Ok ? string.Join(", ", a.Ips) : a.Why));
+            int busy = all.Count(t => !t.IsCompleted);
+            if (busy > 0) log?.Invoke("[gui] " + busy + " resolver(s) still busy for " + host + "; not waiting for them");
+            var w = winOk ? win.Result : null;
+            var merged = new List<string>();
+            if (w != null) merged.AddRange(w.Ips);
+            foreach (var a in got)
+                if (a != w && a.Ok) foreach (var ip in a.Ips) if (!merged.Contains(ip)) merged.Add(ip);
+            if (merged.Count > 6) merged.RemoveRange(6, merged.Count - 6);
+            if (w != null && got.Any(a => a != w && a.Ok && !a.Ips.Intersect(w.Ips).Any()))
+                log?.Invoke("[gui] Windows DNS and DNS-over-HTTPS disagree for " + host + " (DNS may be filtered here); the client gets both");
+            if (merged.Count == 0) { log?.Invoke("[gui] " + host + " could not be resolved; the client will try it itself"); return null; }
+            log?.Invoke("[gui] " + host + " = " + string.Join(", ", merged));
+            return merged;
         }
 
         public static List<string> SystemDns(string host, int ms, out string why)
