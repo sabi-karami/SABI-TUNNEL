@@ -135,6 +135,8 @@ android-app/            برنامه‌ی اندروید «شب فیروزه» (
 
 نسخه‌ی فارسی و بازطراحی‌شده‌ی [کلاینت رسمی TrustTunnel](https://github.com/TrustTunnel/TrustTunnelFlutterClient) (ساخت AdGuard، مجوز Apache-2.0) بر پایه‌ی **آخرین نسخه‌ی سازنده، ۱٫۲٫۰**. کد آن در پوشه‌ی `android-app/` است و هسته‌ی VPN همان کتابخانه‌ی رسمی TrustTunnel است.
 
+<img src="docs/screens/android.jpg" alt="برنامه‌ی اندروید: صفحه‌ی آغاز و صفحه‌ی اصلی" width="100%">
+
 **دانلود:** از Release با برچسب [`android-v1.2.0`](../../releases/tag/android-v1.2.0).
 
 - `TrustTunnel-Firuze-1.2.0-arm64-v8a.apk`: برای بیشتر گوشی‌های امروزی (پیشنهادی)
