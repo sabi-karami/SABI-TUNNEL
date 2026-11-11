@@ -70,8 +70,15 @@ namespace TT
                 {
                     case PillStyle.Primary:
                         if (Enabled) Gfx.Glow(g, new PointF(r.X + r.Width / 2, r.Y + r.Height * 0.75f), r.Width * 0.62f, r.Height * 0.95f, C2, (int)(55 + 45 * HoverT));
-                        using (var b = new LinearGradientBrush(new RectangleF(r.X - 1, r.Y, r.Width + 2, r.Height), Fade(Theme.Mix(C1, Color.White, HoverT * 0.12f)), Fade(Theme.Mix(C2, Color.White, HoverT * 0.08f)), 0f))
+                        bool brand = C1 == Theme.Off1 && C2 == Theme.Off2;
+                        using (var b = brand
+                            ? Art.Grad(r, 0f, Fade(Theme.Mix(Theme.Pink, Color.White, HoverT * 0.10f)), Fade(Theme.Mix(Theme.Violet, Color.White, HoverT * 0.12f)), Fade(Theme.Mix(Theme.Turq, Color.White, HoverT * 0.10f)))
+                            : new LinearGradientBrush(new RectangleF(r.X - 1, r.Y, r.Width + 2, r.Height), Fade(Theme.Mix(C1, Color.White, HoverT * 0.12f)), Fade(Theme.Mix(C2, Color.White, HoverT * 0.08f)), 0f))
                             g.FillPath(b, path);
+                        if (brand && Enabled)
+                            using (var b = Art.Grad(r, 0f, Theme.A(Theme.Gold, 0), Theme.A(Theme.Gold, (int)(150 + 80 * HoverT)), Theme.A(Theme.Gold, 0)))
+                            using (var p = new Pen(b, 1.2f))
+                                g.DrawPath(p, path);
                         using (var hl = Gfx.Round(new RectangleF(r.X + 1, r.Y + 1, r.Width - 2, r.Height * 0.55f), rad))
                         using (var b = new LinearGradientBrush(new RectangleF(r.X, r.Y, r.Width, r.Height * 0.55f + 1), Color.FromArgb(Enabled ? 46 : 20, 255, 255, 255), Color.FromArgb(0, 255, 255, 255), 90f))
                             g.FillPath(b, hl);
@@ -200,7 +207,7 @@ namespace TT
             var hi = new RectangleF(B.Right - (pos + 1) * w + 4, B.Y + 4, w - 8, B.Height - 8);
             using (var path = Gfx.Round(hi, 11))
             {
-                using (var b = new LinearGradientBrush(new RectangleF(hi.X - 1, hi.Y, hi.Width + 2, hi.Height), Fade(Theme.A(Theme.Off1, 230)), Fade(Theme.A(Theme.Off2, 230)), 0f))
+                using (var b = new LinearGradientBrush(new RectangleF(hi.X - 1, hi.Y, hi.Width + 2, hi.Height), Fade(Theme.A(Theme.Violet, 235)), Fade(Theme.A(Theme.Turq, 235)), 0f))
                     g.FillPath(b, path);
                 using (var hl = Gfx.Round(new RectangleF(hi.X, hi.Y, hi.Width, hi.Height * 0.5f), 11))
                 using (var b = new LinearGradientBrush(new RectangleF(hi.X, hi.Y - 1, hi.Width, hi.Height * 0.5f + 2), Color.FromArgb(40, 255, 255, 255), Color.FromArgb(0, 255, 255, 255), 90f))
@@ -493,18 +500,10 @@ namespace TT
             Native.Decorate(Handle);
         }
 
-        /// <summary>Shared window backdrop: deep gradient + faint star field.</summary>
+        /// <summary>Shared window backdrop: aurora sky with girih veil and stars (cached per size and DPI).</summary>
         public static void Backdrop(Graphics g, RectangleF L, int seed = 7)
         {
-            using (var b = new LinearGradientBrush(new RectangleF(L.X, L.Y - 1, L.Width, L.Height + 2), Theme.Bg0, Theme.Bg1, 90f))
-                g.FillRectangle(b, L);
-            var rnd = new Random(seed);
-            for (int i = 0; i < 46; i++)
-            {
-                float x = (float)rnd.NextDouble() * L.Width, y = (float)rnd.NextDouble() * L.Height;
-                float s = rnd.Next(3) == 0 ? 1.6f : 1f;
-                using (var br = new SolidBrush(Color.FromArgb(rnd.Next(12, 46), 200, 210, 255))) g.FillEllipse(br, x, y, s, s);
-            }
+            Art.Cached(g, "sky" + seed + "_" + L.Width + "x" + L.Height, "v3", L, gg => Art.Sky(gg, L, seed));
         }
     }
 }
