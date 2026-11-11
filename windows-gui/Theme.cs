@@ -8,26 +8,29 @@ using System.Text;
 
 namespace TT
 {
-    /// <summary>"Night tunnel" palette.</summary>
+    /// <summary>"Shab-e Firuze" (turquoise night) palette: turquoise, gold, violet and aurora pink.</summary>
     static class Theme
     {
-        public static readonly Color Bg0 = Rgb(0x0C, 0x11, 0x22);
-        public static readonly Color Bg1 = Rgb(0x06, 0x08, 0x12);
-        public static readonly Color Panel = Rgb(0x12, 0x18, 0x2C);
-        public static readonly Color Field = Rgb(0x0A, 0x0E, 0x1C);
+        public static readonly Color Bg0 = Rgb(0x0D, 0x10, 0x2C);
+        public static readonly Color Bg1 = Rgb(0x03, 0x04, 0x0B);
+        public static readonly Color Panel = Rgb(0x11, 0x15, 0x30);
+        public static readonly Color Field = Rgb(0x08, 0x0B, 0x1C);
+
+        public static readonly Color Turq = Rgb(0x2D, 0xE2, 0xE6), Gold = Rgb(0xF5, 0xC7, 0x6B), Violet = Rgb(0x8B, 0x5C, 0xF6);
+        public static readonly Color Pink = Rgb(0xFF, 0x4F, 0xD8), Ok = Rgb(0x3E, 0xF0, 0xA1);
         public static readonly Color Stroke = Color.FromArgb(20, 255, 255, 255);
         public static readonly Color StrokeHi = Color.FromArgb(40, 255, 255, 255);
-        public static readonly Color Text = Rgb(0xEE, 0xF1, 0xFA);
-        public static readonly Color Muted = Rgb(0x8E, 0x97, 0xB6);
-        public static readonly Color Dim = Rgb(0x5B, 0x64, 0x82);
-        public static readonly Color Track = Rgb(0x1A, 0x21, 0x3A);
+        public static readonly Color Text = Rgb(0xEF, 0xF2, 0xFF);
+        public static readonly Color Muted = Rgb(0x93, 0x9C, 0xC4);
+        public static readonly Color Dim = Rgb(0x5E, 0x66, 0x8E);
+        public static readonly Color Track = Rgb(0x17, 0x1C, 0x3A);
 
-        public static readonly Color On1 = Rgb(0x34, 0xF5, 0xB4), On2 = Rgb(0x10, 0xB5, 0xD0);
-        public static readonly Color Wait1 = Rgb(0xFF, 0xC8, 0x57), Wait2 = Rgb(0xFF, 0x7A, 0x45);
-        public static readonly Color Off1 = Rgb(0x7B, 0x8B, 0xFF), Off2 = Rgb(0xB0, 0x6C, 0xFF);
-        public static readonly Color Idle = Rgb(0x4A, 0x55, 0x7A);
-        public static readonly Color Danger = Rgb(0xFF, 0x5D, 0x75);
-        public static readonly Color DangerSoft = Rgb(0xFF, 0x9A, 0xA8);
+        public static readonly Color On1 = Turq, On2 = Ok;
+        public static readonly Color Wait1 = Gold, Wait2 = Rgb(0xFF, 0x8A, 0x4C);
+        public static readonly Color Off1 = Violet, Off2 = Pink;
+        public static readonly Color Idle = Rgb(0x4A, 0x52, 0x80);
+        public static readonly Color Danger = Rgb(0xFF, 0x5C, 0x7A);
+        public static readonly Color DangerSoft = Rgb(0xFF, 0x9A, 0xAE);
 
         public static Color Rgb(int r, int g, int b) => Color.FromArgb(r, g, b);
         public static Color A(Color c, int a) => Color.FromArgb(Math.Max(0, Math.Min(255, a)), c.R, c.G, c.B);
@@ -171,19 +174,20 @@ namespace TT
             using (var p = Round(rr, rad)) using (var pen = new Pen(c, w)) g.DrawPath(pen, p);
         }
 
-        /// <summary>A frosted card: translucent fill, hairline border with a lit top edge.</summary>
+        /// <summary>A frosted glass card: tinted translucent fill, aurora-gradient hairline and a lit top edge.</summary>
         public static void Card(Graphics g, RectangleF r, float rad = 16, int fill = 12)
         {
             using (var p = Round(r, rad))
             {
-                using (var b = new LinearGradientBrush(new RectangleF(r.X, r.Y - 1, r.Width, r.Height + 2),
-                           Color.FromArgb(fill + 6, 255, 255, 255), Color.FromArgb(Math.Max(3, fill - 6), 255, 255, 255), 90f))
+                using (var b = Art.Grad(r, 90f, Color.FromArgb(fill + 8, 190, 205, 255), Color.FromArgb(Math.Max(3, fill - 2), 150, 140, 255), Color.FromArgb(Math.Max(3, fill - 6), 120, 110, 220)))
                     g.FillPath(b, p);
-                using (var b = new LinearGradientBrush(new RectangleF(r.X, r.Y - 1, r.Width, r.Height + 2),
-                           Color.FromArgb(38, 255, 255, 255), Color.FromArgb(9, 255, 255, 255), 90f))
+                using (var b = Art.Grad(r, 25f, Theme.A(Theme.Turq, 60 + fill), Color.FromArgb(14, 255, 255, 255), Theme.A(Theme.Violet, 40 + fill), Theme.A(Theme.Gold, 34 + fill)))
                 using (var pen = new Pen(b, 1f))
                     g.DrawPath(pen, p);
             }
+            using (var b = Art.Grad(new RectangleF(r.X + rad, r.Y, Math.Max(4, r.Width - rad * 2), 1), 0f, Color.FromArgb(0, 255, 255, 255), Color.FromArgb(70, 255, 255, 255), Color.FromArgb(0, 255, 255, 255)))
+            using (var pen = new Pen(b, 1f))
+                g.DrawLine(pen, r.X + rad, r.Y + 0.5f, r.Right - rad, r.Y + 0.5f);
         }
 
         /// <summary>Soft radial glow.</summary>
@@ -210,7 +214,7 @@ namespace TT
 
         static readonly Dictionary<int, StringFormat> formats = new Dictionary<int, StringFormat>();
 
-        static StringFormat Fmt(Al al, bool rtl, bool wrap, StringAlignment v)
+        internal static StringFormat Fmt(Al al, bool rtl, bool wrap, StringAlignment v)
         {
             int key = (int)al | (rtl ? 8 : 0) | (wrap ? 16 : 0) | ((int)v << 5);
             lock (formats)
@@ -454,27 +458,150 @@ namespace TT
             }
         }
 
-        /// <summary>The brand mark: rounded tile with a tunnel arch and a light at its end.</summary>
-        public static void Brand(Graphics g, RectangleF r, Color c1, Color c2)
+        /// <summary>The brand mark, same as the Android icon, app.ico and the web logo (all drawn by the same rules):
+        /// a gold khatam of two squares on a night-filled star, a neon pointed Persian arch with nested arches and a
+        /// light at the end of the tunnel. Three levels of detail: tiny (&lt;24px: star outline, arch, light dot),
+        /// mid (24-39px: + khatam lines, nested arches, glow) and big (40px+: + circle, gold halo, sparkles).</summary>
+        public static void Brand(Graphics g, RectangleF r) => Brand(g, r, Theme.Turq, Color.White, Theme.Gold);
+
+        public static void Brand(Graphics g, RectangleF r, Color neon, Color light) => Brand(g, r, neon, light, Theme.Gold);
+
+        public static void Brand(Graphics g, RectangleF r, Color neon, Color light, Color star)
         {
-            using (var path = Gfx.Round(r, r.Width * 0.3f))
-            using (var b = new LinearGradientBrush(new RectangleF(r.X - 1, r.Y - 1, r.Width + 2, r.Height + 2), c1, c2, 45f))
-                g.FillPath(b, path);
-            using (var hl = Gfx.Round(new RectangleF(r.X, r.Y, r.Width, r.Height * 0.5f), r.Width * 0.3f))
-            using (var b = new LinearGradientBrush(new RectangleF(r.X, r.Y - 1, r.Width, r.Height * 0.5f + 2), Color.FromArgb(60, 255, 255, 255), Color.FromArgb(0, 255, 255, 255), 90f))
-                g.FillPath(b, hl);
-            float w = r.Width;
-            var arch = new RectangleF(r.X + w * 0.22f, r.Y + w * 0.2f, w * 0.56f, w * 0.62f);
-            using (var p = new Pen(Color.White, Math.Max(1.4f, w * 0.1f)) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+            float S = Math.Min(r.Width, r.Height);
+            if (S < 8) return;
+            int kind = S < 24 ? 0 : S < 40 ? 1 : 2;
+            float gw = kind == 0 ? Math.Max(1.05f, 0.068f * S) : kind == 1 ? Math.Max(1.15f, 0.05f * S) : Math.Max(1.3f, 0.03f * S);
+            float aw = kind == 0 ? Math.Max(1.25f, 0.09f * S) : kind == 1 ? Math.Max(1.4f, 0.066f * S) : Math.Max(1.6f, 0.036f * S);
+            float gm = kind == 0 ? 0f : kind == 1 ? 0.012f * S : 0.03f * S;
+            float R = S / 2 - gw / 2 - gm - 0.25f;
+            var c = new PointF(r.X + r.Width / 2, r.Y + r.Height / 2);
+            float a, ys, yb, vp;
+            float[] nest;
+            if (kind == 0) { a = 0.46f; ys = 0f; yb = 0.46f; vp = 0.27f; nest = new float[0]; }
+            else if (kind == 1) { a = 0.38f; ys = 0f; yb = 0.38f; vp = 0.16f; nest = S >= 28 ? new[] { 0.62f, 0.32f } : new[] { 0.55f }; }
+            else
             {
-                float rad = arch.Width / 2;
-                g.DrawArc(p, arch.X, arch.Y, arch.Width, arch.Width, 180, 180);
-                g.DrawLine(p, arch.X, arch.Y + rad, arch.X, arch.Bottom);
-                g.DrawLine(p, arch.Right, arch.Y + rad, arch.Right, arch.Bottom);
+                a = 0.42f; ys = -0.02f; yb = 0.55f; vp = 0.26f;
+                nest = S >= 96 ? new[] { 0.80f, 0.62f, 0.46f, 0.33f, 0.22f } : S >= 56 ? new[] { 0.74f, 0.52f, 0.33f } : new[] { 0.70f, 0.42f };
             }
-            float d = w * 0.16f;
-            using (var b = new SolidBrush(Color.FromArgb(235, 255, 255, 255)))
-                g.FillEllipse(b, r.X + w / 2 - d / 2, arch.Y + arch.Width / 2 - d * 0.1f, d, d);
+            a *= R; ys = c.Y + ys * R; yb = c.Y + yb * R; vp = c.Y + vp * R;
+            var oldMode = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            // night-filled star + gold khatam
+            using (var starPath = Art.Star(c, R, R * Art.Khatam, 0))
+            {
+                if (kind == 2)
+                    for (int i = 3; i >= 1; i--)
+                        using (var p = new Pen(Theme.A(star, 20), gw * (1 + i * 0.9f)) { LineJoin = LineJoin.Round })
+                            g.DrawPath(p, starPath);
+                using (var b = new LinearGradientBrush(new RectangleF(c.X - R, c.Y - R - 1, R * 2, R * 2 + 2), Theme.Rgb(0x0B, 0x10, 0x30), Theme.Rgb(0x06, 0x08, 0x14), 90f))
+                    g.FillPath(b, starPath);
+                using (var p = new Pen(star, gw) { LineJoin = LineJoin.Round })
+                {
+                    if (kind == 0) g.DrawPath(p, starPath);
+                    else { g.DrawPolygon(p, Square(c, R, 45f)); g.DrawPolygon(p, Square(c, R, 0f)); }
+                }
+            }
+            if (kind == 2)
+            {
+                float r2 = R * 0.70f;
+                using (var p = new Pen(Theme.A(star, 140), Math.Max(0.8f, gw * 0.5f))) g.DrawEllipse(p, c.X - r2, c.Y - r2, r2 * 2, r2 * 2);
+            }
+
+            // the tunnel: dark inside, glow, nested arches, light at the end
+            float apex = ys - a * 1.3f * 0.97301f;
+            using (var tun = ArchPath(c.X, a, ys, yb, true))
+            using (var b = new LinearGradientBrush(new RectangleF(c.X - a, apex - 1, a * 2, yb - apex + 2), Theme.Rgb(5, 8, 28), Theme.Mix(Theme.Rgb(5, 8, 28), neon, 0.2f), 90f))
+                g.FillPath(b, tun);
+            if (kind > 0) Gfx.Glow(g, new PointF(c.X, vp), a * 1.05f, a * 1.05f, neon, kind == 2 ? 190 : 128);
+            for (int i = 0; i < nest.Length; i++)
+            {
+                float f = nest[i];
+                float w = kind == 2 ? Math.Max(0.9f, aw * (0.55f - 0.06f * i)) : Math.Max(0.85f, aw * 0.5f);
+                using (var path = ArchPath(c.X, a * f, vp + (ys - vp) * f, vp + (yb - vp) * f, false))
+                using (var p = P(Theme.A(neon, 235 - 40 * i), w))
+                    g.DrawPath(p, path);
+            }
+            bool white = light.ToArgb() == Color.White.ToArgb();
+            if (kind == 0)
+            {
+                float d = R * 0.115f;
+                using (var b = new SolidBrush(white ? Theme.Mix(neon, Color.White, 0.6f) : Theme.Mix(light, Color.White, 0.3f)))
+                    g.FillEllipse(b, c.X - d, vp - d, d * 2, d * 2);
+            }
+            else
+                Gfx.Glow(g, new PointF(c.X, vp), a * 0.42f, a * 0.42f, Theme.Mix(light, Color.White, 0.5f), 255);
+
+            // neon outer arch
+            using (var arch = ArchPath(c.X, a, ys, yb, false))
+            {
+                if (kind == 2)
+                {
+                    using (var p = P(Theme.A(neon, 36), aw * 4.2f)) g.DrawPath(p, arch);
+                    using (var p = P(Theme.A(neon, 70), aw * 2.4f)) g.DrawPath(p, arch);
+                }
+                else if (kind == 1)
+                    using (var p = P(Theme.A(neon, 64), aw * 2.2f)) g.DrawPath(p, arch);
+                using (var p = P(neon, aw)) g.DrawPath(p, arch);
+                if (kind > 0)
+                    using (var p = P(Theme.A(Theme.Mix(neon, Color.White, 0.8f), 230), Math.Max(0.6f, aw * 0.32f))) g.DrawPath(p, arch);
+            }
+            if (kind == 2 && S >= 64)
+            {
+                var sp = new[] { new[] { 0.74f, 0.26f, 1f }, new[] { 0.25f, 0.33f, 0.65f }, new[] { 0.71f, 0.73f, 0.5f } };
+                foreach (var q in sp)
+                    Art.Sparkle(g, new PointF(c.X + (q[0] - 0.5f) * R * 2.5f, c.Y + (q[1] - 0.5f) * R * 2.5f), 0.08f * R * q[2], Color.White, 240);
+            }
+            g.SmoothingMode = oldMode;
+        }
+
+        /// <summary>Square with corners on a circle of radius R, first corner at rotDeg (45 = upright square, 0 = diamond).</summary>
+        static PointF[] Square(PointF c, float R, float rotDeg)
+        {
+            var pts = new PointF[4];
+            for (int i = 0; i < 4; i++)
+            {
+                double t = (rotDeg + 90 * i) * Math.PI / 180;
+                pts[i] = new PointF(c.X + (float)Math.Cos(t) * R, c.Y + (float)Math.Sin(t) * R);
+            }
+            return pts;
+        }
+
+        /// <summary>Pointed Persian arch, open at the bottom: legs at cx-a and cx+a from yb up to ys, then two arcs of
+        /// radius 1.3a whose centres sit 0.3a past the axis, meeting in a point.</summary>
+        static GraphicsPath ArchPath(float cx, float a, float ys, float yb, bool closed)
+        {
+            const float Th = 76.6582f;   // acos(0.3 / 1.3)
+            float rr = a * 1.3f;
+            var p = new GraphicsPath();
+            p.AddLine(cx + a, yb, cx + a, ys);
+            p.AddArc(cx - 0.3f * a - rr, ys - rr, rr * 2, rr * 2, 0f, -Th);
+            p.AddArc(cx + 0.3f * a - rr, ys - rr, rr * 2, rr * 2, 180f + Th, -Th);
+            p.AddLine(cx - a, ys, cx - a, yb);
+            if (closed) p.CloseFigure();
+            return p;
+        }
+
+        /// <summary>Signal bars (0-4 lit).</summary>
+        public static void Bars(Graphics g, RectangleF r, Color on, Color off, int lit)
+        {
+            float bw = r.Width / 5.5f;
+            for (int i = 0; i < 4; i++)
+            {
+                float h = r.Height * (0.35f + 0.65f * i / 3f);
+                var br = new RectangleF(r.X + i * bw * 1.5f, r.Bottom - h, bw, h);
+                Gfx.FillRound(g, br, bw / 2, i < lit ? on : off);
+            }
+        }
+
+        /// <summary>Up + down arrows (data volume).</summary>
+        public static void Data(Graphics g, RectangleF r, Color c, float w = 1.5f)
+        {
+            float hw = r.Width / 2;
+            Arrow(g, new RectangleF(r.X, r.Y, hw - 1, r.Height), c, false, w);
+            Arrow(g, new RectangleF(r.X + hw + 1, r.Y, hw - 1, r.Height), c, true, w);
         }
     }
 }

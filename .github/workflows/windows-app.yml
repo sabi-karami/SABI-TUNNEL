@@ -2,12 +2,22 @@ name: Windows app
 
 on:
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Publish the build as GitHub release v3.0.0 (setup, zip, SHA256SUMS)'
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths: ['windows-gui/**', '.github/workflows/windows-app.yml']
 
 env:
   CLIENT_VERSION: '1.1.11'
+  APP_VERSION: '3.0.0'
+
+concurrency:
+  group: windows-app-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -43,7 +53,7 @@ jobs:
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
-          & $iscc /Qp "/DPkgDir=$env:GITHUB_WORKSPACE\pkg\TrustTunnel" /DAppVer=2.1.1 "/O$env:GITHUB_WORKSPACE\setup" windows-gui\installer.iss
+          & $iscc /Qp "/DPkgDir=$env:GITHUB_WORKSPACE\pkg\TrustTunnel" /DAppVer=$env:APP_VERSION "/O$env:GITHUB_WORKSPACE\setup" windows-gui\installer.iss
           if ($LASTEXITCODE -ne 0) { exit 1 }
           Get-ChildItem setup | Format-Table Name, Length
 
@@ -66,6 +76,16 @@ jobs:
           $lines | Set-Content "$out\defender.txt"; $lines | Write-Host
           Copy-Item build\TrustTunnel.exe, build\TrustTunnel.exe.config, setup\TrustTunnel-Setup.exe "$out\bin\"
           if ($bad -gt 0) { exit 1 }
+
+      - name: Render UI previews (offline, every build)
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          $d = "$env:GITHUB_WORKSPACE\shots\ui"
+          $p = Start-Process "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe" -ArgumentList "--shots=$d" -PassThru -Wait
+          Write-Host "exit: $($p.ExitCode)"
+          if (Test-Path "$env:GITHUB_WORKSPACE\build\trusttunnel_gui_error.log") { Get-Content "$env:GITHUB_WORKSPACE\build\trusttunnel_gui_error.log" }
+          Get-ChildItem $d -ErrorAction SilentlyContinue | Format-Table Name, Length
 
       - name: Live UI test against the real server
         if: env.TT_TEST_LINK != ''
@@ -295,6 +315,28 @@ jobs:
           Get-Process TrustTunnel, trusttunnel_client -ErrorAction SilentlyContinue | Stop-Process -Force
           New-Item -ItemType Directory "$shots\bin" -Force | Out-Null
           Copy-Item "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe", "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe.config", "$env:GITHUB_WORKSPACE\setup\TrustTunnel-Setup.exe" "$shots\bin\"
+
+      - name: Publish GitHub release
+        if: ${{ inputs.release }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = $env:APP_VERSION; $tag = "v$v"
+          Compress-Archive -Path pkg/TrustTunnel -DestinationPath TrustTunnel-Windows-GUI.zip -Force
+          Copy-Item setup/TrustTunnel-Setup.exe .
+          $sums = foreach ($f in 'TrustTunnel-Setup.exe', 'TrustTunnel-Windows-GUI.zip') { '{0}  {1}' -f (Get-FileHash $f -Algorithm SHA256).Hash.ToLower(), $f }
+          $sums | Set-Content -Encoding ascii SHA256SUMS.txt; $sums | Write-Host
+          gh release view $tag --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "TrustTunnel for Windows $v · شب فیروزه" --notes-file windows-gui/RELEASE_NOTES.md --target $env:GITHUB_SHA --latest
+          } else {
+            gh release edit $tag --title "TrustTunnel for Windows $v · شب فیروزه" --notes-file windows-gui/RELEASE_NOTES.md
+          }
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          gh release upload $tag TrustTunnel-Setup.exe TrustTunnel-Windows-GUI.zip SHA256SUMS.txt --clobber
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          gh release view $tag --json url,assets --jq '.url, (.assets[] | "\(.name) \(.size)")'
 
       - name: Publish test results to ci-results branch
         if: always()

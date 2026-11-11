@@ -36,11 +36,20 @@ USERS_PATH = DATA_DIR / "users.json"
 STATS_PATH = DATA_DIR / "stats.json"
 INDEX_HTML = Path(__file__).with_name("index.html")
 SHARE_HTML = Path(__file__).with_name("share.html")
+WIN_ICON = ('<svg viewBox="0 0 24 24"><path d="M3 5.6 10.4 4.6v7H3zM11.6 4.4 21 3v8.6h-9.4zM3 12.8h7.4v7L3 18.8zM11.6 12.8H21V21l-9.4-1.3z"/></svg>')
 DOWNLOADS_DIR = DATA_DIR / "downloads"
-DOWNLOADS = [  # (file, title, note) - offered on the share page when present in DOWNLOADS_DIR
-    ("TrustTunnel-Setup.exe", "ویندوز — نصب‌کننده", "Windows 10/11 · نصب با یک کلیک، میان‌بر و حذف از Apps"),
-    ("TrustTunnel-Windows-GUI.zip", "ویندوز — نسخه‌ی zip", "بدون نصب؛ پوشه را باز و TrustTunnel.exe را اجرا کنید"),
+ASSETS_DIR = Path(__file__).with_name("assets")
+ASSET_TYPES = {".woff2": "font/woff2", ".svg": "image/svg+xml", ".png": "image/png"}
+EMBLEM_ICON = '<svg viewBox="0 0 64 64"><use href="#logo"/></svg>'   # the app's own icon (symbol in share.html)
+DL_ICONS = {"android": EMBLEM_ICON, "win": WIN_ICON}
+DOWNLOADS = [  # (file, os, title, note) - offered on the share page when present in DOWNLOADS_DIR
+    ("TrustTunnel-Firuze-arm64-v8a.apk", "android", "اندروید · TrustTunnel شب فیروزه", "فایل APK برای بیشتر گوشی‌ها (arm64)"),
+    ("TrustTunnel-Firuze-armeabi-v7a.apk", "android", "اندروید · گوشی‌های قدیمی‌تر", "اگر نسخه‌ی بالا نصب نشد (32 بیتی، armeabi-v7a)"),
+    ("TrustTunnel-Setup.exe", "win", "ویندوز — نصب‌کننده", "Windows 10/11 · نصب با یک کلیک، میان‌بر و حذف از Apps"),
+    ("TrustTunnel-Windows-GUI.zip", "win", "ویندوز — نسخه‌ی zip", "بدون نصب؛ پوشه را باز و TrustTunnel.exe را اجرا کنید"),
 ]
+DL_TYPES = {".apk": "application/vnd.android.package-archive", ".exe": "application/vnd.microsoft.portable-executable",
+            ".zip": "application/zip"}
 POLL_SECONDS = 20
 HISTORY_POINTS = 180
 SESSION_TTL = 12 * 3600
@@ -312,7 +321,10 @@ async def security_headers(request: Request, call_next):
     resp.headers["X-Frame-Options"] = "DENY"
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Referrer-Policy"] = "no-referrer"
-    resp.headers["Cache-Control"] = "no-store"
+    if request.url.path.startswith("/assets/") and resp.status_code == 200:
+        resp.headers["Cache-Control"] = "public, max-age=604800, immutable"
+    else:
+        resp.headers["Cache-Control"] = "no-store"
     return resp
 
 
@@ -570,7 +582,7 @@ async def share_page(name: str, token: str, p: str = "http2"):
         state, cls = "غیرفعال" + ({"quota": " (حجم تمام شد)", "expired": " (منقضی شد)"}.get(u.get("disabled_reason"), "")), "bad"
     else:
         state, cls = "فعال", "ok"
-    usage = _fmt_bytes(used) + (f" از {quota:g} GB" if quota else " (بدون محدودیت حجم)")
+    usage = "\u2066" + _fmt_bytes(used) + "\u2069" + (f" از \u2066{quota:g} GB\u2069" if quota else " (بدون محدودیت حجم)")
     pct = min(100, used / (quota * 10**9) * 100) if quota else 0
     if exp:
         left = exp - now
@@ -579,17 +591,21 @@ async def share_page(name: str, token: str, p: str = "http2"):
     else:
         expiry = "بدون تاریخ انقضا"
     base = f"/s/{name}/{token}"
-    dl = []
-    for fn, title, note in DOWNLOADS:
+    dl = {"android": [], "win": []}
+    for fn, os_, title, note in DOWNLOADS:
         f = DOWNLOADS_DIR / fn
         if f.is_file():
-            size = _fmt_bytes(f.stat().st_size)
-            dl.append(f'<a class="dl" href="{base}/dl/{fn}"><b>{html.escape(title)}</b><span>{html.escape(note)} · {size}</span></a>')
+            size = "\u2066" + _fmt_bytes(f.stat().st_size) + "\u2069"
+            dl[os_].append(f'<a class="dl ours" data-os="{os_}" href="{base}/dl/{fn}" download><span class="ic">{DL_ICONS[os_]}</span>'
+                           f'<div><b>{html.escape(title)}</b><span>{html.escape(note)} · {size}</span></div><span class="go">‹</span></a>')
     page = SHARE_HTML.read_text(encoding="utf-8")
     vals = {
         "SERVER": html.escape(S.cfg.get("server_name") or "TrustTunnel"), "USER": html.escape(name),
         "LINK": html.escape(link), "QR": qr, "STATE": state, "STATECLS": cls, "USAGE": html.escape(usage),
-        "PCT": f"{pct:.0f}", "EXPIRY": html.escape(expiry), "DOWNLOADS": "\n".join(dl),
+        "PCT": f"{pct:.0f}", "EXPIRY": html.escape(expiry), "DL_ANDROID": "\n".join(dl["android"]), "DL_WIN": "\n".join(dl["win"]),
+        "QUOTA": f"{quota:g} گیگ" if quota else "0", "USED": "\u2066" + html.escape(_fmt_bytes(used)) + "\u2069",
+        "EXPTS": str(int(exp)), "CREATED": str(int(u.get("created", 0) or 0)),
+        "REGION": html.escape(S.cfg.get("region") or ""),
         "H2ON": "on" if proto == "http2" else "", "H3ON": "on" if proto == "http3" else "", "BASE": base,
     }
     for k, v in vals.items():
@@ -597,7 +613,7 @@ async def share_page(name: str, token: str, p: str = "http2"):
     resp = HTMLResponse(page)
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     resp.headers["Content-Security-Policy"] = ("default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
-                                               "img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+                                               "img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
     return resp
 
 
@@ -606,7 +622,7 @@ async def share_download(name: str, token: str, fn: str):
     _share_user(name, token)
     if fn not in {d[0] for d in DOWNLOADS} or not (DOWNLOADS_DIR / fn).is_file():
         raise HTTPException(404, "not found")
-    return FileResponse(DOWNLOADS_DIR / fn, filename=fn, media_type="application/octet-stream")
+    return FileResponse(DOWNLOADS_DIR / fn, filename=fn, media_type=DL_TYPES.get(Path(fn).suffix, "application/octet-stream"))
 
 
 class PasswordIn(BaseModel):
@@ -653,6 +669,14 @@ async def restart_endpoint(request: Request):
     async with S.lock:
         await apply_changes()
     return {"ok": True}
+
+
+@app.get("/assets/{fn}")
+async def asset(fn: str):
+    f = ASSETS_DIR / fn
+    if "/" in fn or fn.startswith(".") or f.suffix not in ASSET_TYPES or not f.is_file():
+        raise HTTPException(404, "not found")
+    return FileResponse(f, media_type=ASSET_TYPES[f.suffix])
 
 
 @app.get("/", response_class=HTMLResponse)

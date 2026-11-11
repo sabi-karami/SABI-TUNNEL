@@ -22,8 +22,8 @@ namespace TT
     {
         [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool DestroyIcon(IntPtr h);
 
-        /// <summary>Brand mark tinted for a state (used for the tray).</summary>
-        public static Icon Make(Color c1, Color c2, bool dot = false)
+        /// <summary>Brand mark tinted for a state (used for the tray): c1 = neon arch, c2 = light, star = khatam colour.</summary>
+        public static Icon Make(Color c1, Color c2, bool dot = false, Color? star = null)
         {
             int n = Math.Max(16, SystemInformation.SmallIconSize.Width);
             if (n > 16 && n < 32) n = 32;   // let Windows downscale a crisp 32px
@@ -34,7 +34,7 @@ namespace TT
                     g.SmoothingMode = SmoothingMode.AntiAlias;
                     g.PixelOffsetMode = PixelOffsetMode.HighQuality;
                     g.Clear(Color.Transparent);
-                    Glyph.Brand(g, new RectangleF(0.5f, 0.5f, n - 1, n - 1), c1, c2);
+                    Glyph.Brand(g, new RectangleF(0, 0, n, n), c1, c2, star ?? Theme.Gold);
                 }
                 IntPtr h = bmp.GetHicon();
                 var ico = (Icon)Icon.FromHandle(h).Clone();

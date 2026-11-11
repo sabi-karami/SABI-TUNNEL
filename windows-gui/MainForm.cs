@@ -20,7 +20,7 @@ namespace TT
     sealed class MainForm : GlassForm
     {
         const float WW = 380, HH = 664;
-        public const string GuiVersion = "2.1.1";
+        public const string GuiVersion = "3.0.0";
         public static readonly string[] Cmds = { "show", "toggle", "connect", "disconnect", "settings", "home", "log", "import", "bypass", "servers", "addlink", "quit" };
 
         readonly bool startInTray;
@@ -79,6 +79,14 @@ namespace TT
         static readonly RectangleF StatsRect = new RectangleF(20, 462, WW - 40, 104);
         static readonly RectangleF ToastRect = new RectangleF(WW / 2 - 130, HH - 98, 260, 38);
         static PointF OrbC => new PointF(OrbRect.X + OrbRect.Width / 2, OrbRect.Y + OrbRect.Height / 2);
+        static readonly RectangleF RouteBand = new RectangleF(0, 140, WW, 136);
+
+        // ---- route map (Iran -> server), logical px projection
+        const float PinY = 236;
+        Place dest = Geo.Find("");
+        string destHost;
+        float mk = 2.2f, mx0, my0;
+        PointF MapP(float lat, float lon) => new PointF(mx0 + lon * mk, my0 - lat * mk);
 
         public MainForm(bool startHidden) : base(WW, HH)
         {
@@ -125,6 +133,80 @@ namespace TT
             var once = new System.Windows.Forms.Timer { Interval = 400 };
             once.Tick += (s, e) => { once.Stop(); once.Dispose(); Startup(); };
             once.Start();
+        }
+
+        // =============================================================== CI previews
+
+        /// <summary>CI only (--shots=DIR): renders each UI state to PNG offscreen. No network, no VPN.</summary>
+        public void RenderPreviews(string dir, float scale)
+        {
+            Directory.CreateDirectory(dir);
+            var L = new RectangleF(0, 0, WW, HH);
+            void Snap(string name, Page page)
+            {
+                Canvas.Show(page, 0);
+                colorT = 1; c1 = t1; c2 = t2;
+                using (var bmp = new Bitmap((int)Math.Round(WW * scale), (int)Math.Round(HH * scale)))
+                {
+                    using (var g = Graphics.FromImage(bmp)) Canvas.RenderTo(g, scale, L);
+                    bmp.Save(Path.Combine(dir, name + ".png"), System.Drawing.Imaging.ImageFormat.Png);
+                }
+            }
+            try
+            {
+                profile = "TrustTunnel"; host = ""; user = ""; profileCount = 0;
+                SetState(VState.NoConfig);
+                Snap("05-noconfig", main);
+
+                profile = "Sabi VPN"; host = "tt-oh.sahebkarami.ir"; user = "sami-pc"; profileCount = 2;
+                SetState(VState.Off);
+                Snap("10-off", main);
+
+                SetState(VState.Connecting);
+                Snap("20-connecting", main);
+
+                var rnd = new Random(3);
+                for (int i = 0; i < N; i++)
+                {
+                    sDown[i] = (float)(1.6e6 + 1.1e6 * Math.Sin(i / 5.0) + 0.6e6 * rnd.NextDouble());
+                    sUp[i] = (float)(2.2e5 + 1.4e5 * Math.Sin(i / 3.0 + 1) + 0.8e5 * rnd.NextDouble());
+                }
+                sCount = N; statsOk = true;
+                rateRx = sDown[N - 1]; rateTx = sUp[N - 1];
+                sessRx = 486L * 1024 * 1024; sessTx = 41L * 1024 * 1024;
+                exitIp = "77.112.234.99"; serverIps.Add(exitIp); pingMs = 92;
+                connectedAt = DateTime.Now.AddMinutes(-23).AddSeconds(-14);
+                SetState(VState.On);
+                status = "مدت اتصال  " + Gfx.Fa("00:23:14"); statusColor = Theme.Muted;
+                Snap("30-on", main);
+
+                Snap("40-settings", settings);
+
+                // brand mark at every level of detail + the three tray states, on dark and light
+                using (var bmp = new Bitmap(680, 300))
+                {
+                    using (var g = Graphics.FromImage(bmp))
+                    {
+                        Gfx.Hq(g);
+                        using (var b = new SolidBrush(Theme.Rgb(0x09, 0x0B, 0x1A))) g.FillRectangle(b, 0, 0, 680, 150);
+                        using (var b = new SolidBrush(Theme.Rgb(0xF3, 0xF4, 0xF8))) g.FillRectangle(b, 0, 150, 680, 150);
+                        int[] sizes = { 16, 20, 24, 32, 40, 48, 64, 128 };
+                        var states = new[] {
+                            new[] { Theme.Turq, Theme.Ok, Theme.Gold }, new[] { Theme.Wait1, Theme.Wait2, Theme.Gold },
+                            new[] { Theme.Rgb(0x6A, 0x74, 0x98), Theme.Rgb(0x45, 0x4E, 0x6E), Theme.Mix(Theme.Gold, Theme.Rgb(0x45, 0x4E, 0x6E), 0.45f) } };
+                        for (int row = 0; row < 2; row++)
+                        {
+                            float x = 14;
+                            foreach (int s in sizes) { Glyph.Brand(g, new RectangleF(x, row * 150 + 11 + (128 - s) / 2, s, s)); x += s + 12; }
+                            foreach (var k in new[] { "on", "wait", "off" }) { g.DrawIcon(TrayIcon(k), new Rectangle((int)x, row * 150 + 67, 16, 16)); x += 24; }
+                            x += 6;
+                            foreach (var q in states) { Glyph.Brand(g, new RectangleF(x, row * 150 + 59, 32, 32), q[0], q[1], q[2]); x += 40; }
+                        }
+                    }
+                    bmp.Save(Path.Combine(dir, "50-icons.png"), System.Drawing.Imaging.ImageFormat.Png);
+                }
+            }
+            finally { try { tray.Visible = false; } catch { } }
         }
 
         // =============================================================== layout
@@ -201,21 +283,136 @@ namespace TT
             Gfx.Glow(g, new PointF(30, 20), 200, 130, Theme.Off2, 16);
         }
 
+        void MapView()
+        {
+            var a = Geo.Iran; var b = dest;
+            float d = Math.Max(25, Math.Abs(a.Lon - b.Lon));
+            mk = (WW - 76) / d;
+            mx0 = WW / 2 - (a.Lon + b.Lon) / 2 * mk;
+            my0 = PinY + (a.Lat + b.Lat) / 2 * mk;
+        }
+
+        /// <summary>Static dotted world map (cached bitmap); dots warm up around both ends of the route.</summary>
+        void PaintMapLayer(Graphics g)
+        {
+            const float top = 60, bottom = 388;
+            float dot = Math.Max(1.1f, Math.Min(2.4f, mk * 2 * 0.36f));
+            var A = MapP(Geo.Iran.Lat, Geo.Iran.Lon); var B = MapP(dest.Lat, dest.Lon);
+            var baseC = Theme.Rgb(0x8C, 0x98, 0xD8);
+            using (var br = new SolidBrush(baseC))
+                WorldMap.ForEachLand((lat, lon) =>
+                {
+                    var p = MapP(lat, lon);
+                    if (p.X < -4 || p.X > WW + 4 || p.Y < top || p.Y > bottom) return;
+                    float fy = Math.Min(1, Math.Min(p.Y - top, bottom - p.Y) / 56f);
+                    float fx = Math.Min(1, Math.Min(p.X + 4, WW + 4 - p.X) / 36f);
+                    float da = Dist(p, A), db = Dist(p, B);
+                    float hot = Math.Max(0, 1 - Math.Min(da, db) / 48f);
+                    var col = hot > 0 ? Theme.Mix(baseC, da < db ? Theme.Turq : Theme.Gold, hot) : baseC;
+                    br.Color = Theme.A(col, (int)((24 + 96 * hot) * fy * fx));
+                    float k = dot * (1 + hot * 0.25f);
+                    g.FillEllipse(br, p.X - k / 2, p.Y - k / 2, k, k);
+                });
+        }
+
+        static float Dist(PointF a, PointF b) => (float)Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
+        static PointF Lerp(PointF a, PointF b, float t) => new PointF(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t);
+        static PointF Bez(PointF a, PointF b, PointF c, PointF d, float t)
+        {
+            float u = 1 - t;
+            return new PointF(u * u * u * a.X + 3 * u * u * t * b.X + 3 * u * t * t * c.X + t * t * t * d.X,
+                              u * u * u * a.Y + 3 * u * u * t * b.Y + 3 * u * t * t * c.Y + t * t * t * d.Y);
+        }
+
+        /// <summary>The tunnel: an arc from Iran into the orb and out to the server, with travelling packets.</summary>
+        void PaintRoute(Graphics g)
+        {
+            var A = MapP(Geo.Iran.Lat, Geo.Iran.Lon); var B = MapP(dest.Lat, dest.Lon);
+            var ctrl = new PointF((A.X + B.X) / 2, Math.Min(A.Y, B.Y) - 150);
+            PointF c1p = Lerp(A, ctrl, 2 / 3f), c2p = Lerp(B, ctrl, 2 / 3f);
+            bool on = state == VState.On, live = on || spinning;
+            double t = clock.ElapsedMilliseconds / 1000.0;
+            var box = RectangleF.FromLTRB(Math.Min(A.X, B.X), ctrl.Y, Math.Max(A.X, B.X) + 1, Math.Max(A.Y, B.Y) + 1);
+            bool srvLeft = B.X < A.X;
+            Color cS = Theme.Gold, cI = Theme.Turq;
+            int a = on ? 230 : spinning ? 170 : 90;
+            using (var path = new GraphicsPath())
+            {
+                path.AddBezier(A, c1p, c2p, B);
+                if (live)
+                    using (var b = Art.Grad(box, 0f, Theme.A(srvLeft ? cS : cI, 40), Theme.A(Theme.Violet, 40), Theme.A(srvLeft ? cI : cS, 40)))
+                    using (var p = new Pen(b, 6f)) g.DrawPath(p, path);
+                using (var b = Art.Grad(box, 0f, Theme.A(srvLeft ? cS : cI, a), Theme.A(Theme.Violet, a), Theme.A(srvLeft ? cI : cS, a)))
+                using (var p = new Pen(b, live ? 1.8f : 1.3f))
+                {
+                    if (!live) p.DashPattern = new[] { 2f, 3f };
+                    g.DrawPath(p, path);
+                }
+            }
+            if (live)
+            {
+                float sp = on ? 0.28f : 0.55f;
+                for (int k = 0; k < 4; k++)
+                {
+                    bool back = k == 3;
+                    float f = (float)((t * sp + k / 4.0) % 1.0);
+                    var q = Bez(A, c1p, c2p, B, back ? 1 - f : f);
+                    var col = spinning ? Theme.Gold : back ? Theme.Gold : Theme.Turq;
+                    int al = (int)(255 * Math.Sin(f * Math.PI));
+                    Gfx.Glow(g, q, 9, 9, col, al * 2 / 3);
+                    using (var b = new SolidBrush(Theme.A(Color.White, al))) g.FillEllipse(b, q.X - 1.8f, q.Y - 1.8f, 3.6f, 3.6f);
+                }
+            }
+            Pin(g, A, cI, Geo.Iran.Name, t, live);
+            Pin(g, B, cS, dest.Name, t + 0.6, live);
+        }
+
+        void Pin(Graphics g, PointF p, Color c, string label, double t, bool live)
+        {
+            if (live)
+            {
+                float f = (float)(t / 1.6 % 1.0);
+                using (var pen = new Pen(Theme.A(c, (int)(150 * (1 - f))), 1.2f)) g.DrawEllipse(pen, p.X - 4 - 11 * f, p.Y - 4 - 11 * f, 8 + 22 * f, 8 + 22 * f);
+            }
+            Gfx.Glow(g, p, 14, 14, c, live ? 120 : 70);
+            using (var b = new SolidBrush(c)) g.FillEllipse(b, p.X - 3.2f, p.Y - 3.2f, 6.4f, 6.4f);
+            using (var b = new SolidBrush(Color.White)) g.FillEllipse(b, p.X - 1.2f, p.Y - 1.2f, 2.4f, 2.4f);
+            var f2 = FontKit.Px(10.5f, 700);
+            float tw = Gfx.Measure(g, label, f2).Width + 14;
+            var r = new RectangleF(Math.Max(4, Math.Min(WW - 4 - tw, p.X - tw / 2)), p.Y + 9, tw, 18);
+            Gfx.FillRound(g, r, 9, Theme.A(Theme.Bg1, 200));
+            Gfx.StrokeRound(g, r, 9, Theme.A(c, 110));
+            Gfx.Text(g, label, f2, Theme.Mix(c, Color.White, 0.25f), new RectangleF(r.X, r.Y, r.Width, r.Height + 1), Al.Center);
+        }
+
         void PaintMain(Graphics g)
         {
-            // brand
-            Glyph.Brand(g, new RectangleF(WW - 20 - 28, 16, 28, 28), Theme.Off1, Theme.Off2);
-            Gfx.Text(g, "TrustTunnel", FontKit.Px(15.5f, 700), Theme.Text, new RectangleF(WW - 20 - 28 - 10 - 160, 14, 160, 32), Al.Right, false);
+            // route map behind everything on this page
+            if (destHost != host) { destHost = host; dest = Geo.Find(host + " " + profile); MapView(); }
+            Art.Cached(g, "map", dest.Lat + "," + dest.Lon, new RectangleF(0, 0, WW, HH), PaintMapLayer);
+            PaintRoute(g);
 
-            // profile + host chip
-            Gfx.Text(g, profile, FontKit.Px(19, 700), Theme.Text, new RectangleF(20, 56, WW - 40, 30), Al.Center);
+            // brand
+            var br = new RectangleF(WW - 20 - 30, 15, 30, 30);
+            Gfx.Glow(g, new PointF(br.X + 15, br.Y + 15), 26, 26, Theme.Turq, 46);
+            Glyph.Brand(g, br);
+            Art.GradText(g, "TrustTunnel", FontKit.Px(15.5f, 700), new RectangleF(WW - 20 - 30 - 9 - 160, 14, 160, 32), Al.Right, false, Theme.Violet, Theme.Turq, Theme.Mix(Theme.Turq, Color.White, 0.3f));
+
+            // profile (with gold sparkles) + host chip
+            var pf = FontKit.Px(19, 700);
+            Gfx.Text(g, profile, pf, Theme.Text, new RectangleF(20, 56, WW - 40, 30), Al.Center);
+            float pw = Math.Min(WW - 90, Gfx.Measure(g, profile, pf).Width);
+            Art.Sparkle(g, new PointF(WW / 2 + pw / 2 + 14, 71), 5, Theme.Gold, 200);
+            Art.Sparkle(g, new PointF(WW / 2 - pw / 2 - 14, 71), 5, Theme.Gold, 200);
             var chip = string.IsNullOrEmpty(host) ? "هنوز سروری وارد نشده" : host + (string.IsNullOrEmpty(user) ? "" : "  ·  " + user);
             bool latin = !string.IsNullOrEmpty(host);
             var cf = FontKit.Px(11.5f, 500);
             float tw = Math.Min(WW - 80, Gfx.Measure(g, chip, cf, 10000, !latin).Width);
             var cr = new RectangleF((WW - tw - 34) / 2, 90, tw + 34, 24);
-            Gfx.FillRound(g, cr, 12, Color.FromArgb(12, 255, 255, 255));
-            Gfx.StrokeRound(g, cr, 12, Theme.Mix(Theme.Stroke, Theme.A(Theme.Off1, 150), chipW.HoverT));
+            Gfx.FillRound(g, cr, 12, Theme.A(Theme.Bg1, 150));
+            using (var path = Gfx.Round(new RectangleF(cr.X + 0.5f, cr.Y + 0.5f, cr.Width - 1, cr.Height - 1), 12))
+            using (var b = Art.Grad(cr, 0f, Theme.A(Theme.Gold, (int)(60 + 120 * chipW.HoverT)), Theme.A(Theme.Violet, (int)(50 + 100 * chipW.HoverT)), Theme.A(Theme.Turq, (int)(70 + 120 * chipW.HoverT))))
+            using (var p = new Pen(b, 1f)) g.DrawPath(p, path);
             Gfx.Glow(g, new PointF(cr.X + 15, cr.Y + 12), 9, 9, c1, 120);
             using (var b = new SolidBrush(state == VState.On ? c1 : Theme.Mix(c1, Theme.Muted, 0.4f))) g.FillEllipse(b, cr.X + 12, cr.Y + 9, 6, 6);
             Gfx.Text(g, chip, cf, Theme.Muted, new RectangleF(cr.X + 24, cr.Y, tw + 4, cr.Height), Al.Left, !latin);
@@ -232,6 +429,12 @@ namespace TT
             StatCol(g, new RectangleF(r.X, r.Y, half, 60), "آپلود", live ? Gfx.Bytes(rateTx, true) : "—", Theme.Off1, false);
             using (var p = new Pen(Theme.Stroke, 1f)) g.DrawLine(p, r.X + half, r.Y + 16, r.X + half, r.Y + 50);
             Spark(g, new RectangleF(r.X + 14, r.Y + 62, r.Width - 28, 32), live);
+            if (live)
+            {
+                float f = (float)(clock.ElapsedMilliseconds / 900.0 % 1.0);
+                Gfx.Text(g, "زنده", FontKit.Px(9.5f, 700), Theme.A(Theme.Ok, 200), new RectangleF(r.X + 22, r.Y + 6, 40, 14), Al.Left);
+                using (var b = new SolidBrush(Theme.A(Theme.Ok, (int)(120 + 135 * Math.Sin(f * Math.PI))))) g.FillEllipse(b, r.X + 14, r.Y + 10.5f, 5, 5);
+            }
         }
 
         void StatCol(Graphics g, RectangleF col, string label, string value, Color c, bool down)
@@ -284,10 +487,15 @@ namespace TT
             using (var b = new SolidBrush(Color.White)) g.FillEllipse(b, last.X - 2.2f, last.Y - 2.2f, 4.4f, 4.4f);
         }
 
-        void Tile(Graphics g, Custom w, string label, string value, Color vc, bool latin, Action<Graphics, RectangleF, Color> icon = null)
+        void Tile(Graphics g, Custom w, string label, string value, Color vc, bool latin, Action<Graphics, RectangleF, Color> icon = null, Action<Graphics, RectangleF, Color> mark = null, Color? accent = null)
         {
             Gfx.Card(g, w.B, 14, (int)(10 + 8 * w.HoverT));
+            var ac = accent ?? Theme.Turq;
+            using (var b = Art.Grad(new RectangleF(w.B.X + 14, w.B.Bottom - 2, w.B.Width - 28, 1), 0f, Theme.A(ac, 0), Theme.A(ac, 170), Theme.A(ac, 0)))
+            using (var p = new Pen(b, 1.4f)) g.DrawLine(p, w.B.X + 14, w.B.Bottom - 1.5f, w.B.Right - 14, w.B.Bottom - 1.5f);
+            if (mark != null && !(icon != null && w.HoverT > 0.5f)) mark(g, new RectangleF(w.B.X + 10, w.B.Y + 10, 13, 13), Theme.A(ac, 200));
             var tr = RectangleF.Inflate(w.B, -12, 0);
+            if (mark != null || icon != null) tr = RectangleF.FromLTRB(w.B.X + 27, tr.Y, tr.Right, tr.Bottom);
             Gfx.Text(g, label, FontKit.Px(11f), Theme.Muted, new RectangleF(tr.X, w.B.Y + 8, tr.Width, 18));
             // shrink-to-fit so a full IPv4 address (or "123.4 MB") never gets an ellipsis
             var vr = new RectangleF(w.B.X + 4, w.B.Y + 26, w.B.Width - 16, 24);   // right edge aligned with the label
@@ -295,14 +503,15 @@ namespace TT
             var vf = FontKit.Px(px, 700);
             while (px > 10f && Gfx.Measure(g, value, vf, 10000, !latin).Width > vr.Width - 2) { px -= 0.5f; vf = FontKit.Px(px, 700); }
             Gfx.Text(g, value, vf, vc, vr, Al.Right, !latin);
-            if (icon != null && w.HoverT > 0.02f) icon(g, new RectangleF(w.B.X + 10, w.B.Y + 10, 12, 12), Theme.A(Theme.Muted, (int)(255 * w.HoverT)));
+            if (icon != null && w.HoverT > 0.5f) icon(g, new RectangleF(w.B.X + 10, w.B.Y + 10, 12, 12), Theme.A(Theme.Text, (int)(255 * w.HoverT)));
         }
 
         void PaintTileIp(Graphics g, Custom w)
         {
             bool via = exitIp != null && serverIps.Contains(exitIp);
             string v = state == VState.On ? (exitIp ?? "…") : "—";
-            Tile(g, w, via ? "IP خروجی  ✓" : "IP خروجی", v, via ? Theme.On1 : Theme.Text, true, (gg, r, c) => Glyph.Copy(gg, r, c, 1.2f));
+            Tile(g, w, via ? "IP خروجی  ✓" : "IP خروجی", v, via ? Theme.On1 : Theme.Text, true, (gg, r, c) => Glyph.Copy(gg, r, c, 1.2f),
+                 (gg, r, c) => Glyph.Globe(gg, r, c), Theme.Turq);
         }
 
         void PaintTilePing(Graphics g, Custom w)
@@ -310,13 +519,14 @@ namespace TT
             bool live = pingMs >= 0 && (state == VState.On || state == VState.Reconnecting);
             string v = live ? pingMs + " ms" : "—";
             var c = !live ? Theme.Text : pingMs < 150 ? Theme.On1 : pingMs < 300 ? Theme.Wait1 : Theme.Danger;
-            Tile(g, w, "پینگ سرور", v, c, true);
+            int lit = !live ? 0 : pingMs < 80 ? 4 : pingMs < 150 ? 3 : pingMs < 300 ? 2 : 1;
+            Tile(g, w, "پینگ سرور", v, c, true, null, (gg, r, cc) => Glyph.Bars(gg, r, live ? c : cc, Color.FromArgb(40, 255, 255, 255), live ? lit : 0), Theme.Gold);
         }
 
         void PaintTileUse(Graphics g, Custom w)
         {
             string v = state == VState.On && statsOk ? Gfx.Bytes(sessRx + sessTx) : "—";
-            Tile(g, w, "مصرف این اتصال", v, Theme.Text, true);
+            Tile(g, w, "مصرف اتصال", v, Theme.Text, true, null, (gg, r, c) => Glyph.Data(gg, r, c, 1.4f), Theme.Violet);
         }
 
         void PaintFooter(Graphics g, Custom w)
@@ -329,7 +539,7 @@ namespace TT
 
         void PaintSettings(Graphics g)
         {
-            Gfx.Text(g, "تنظیمات", FontKit.Px(18, 700), Theme.Text, new RectangleF(130, 14, WW - 14 - 36 - 6 - 130, 32));
+            Art.GradText(g, "تنظیمات", FontKit.Px(18, 700), new RectangleF(130, 14, WW - 14 - 36 - 6 - 130, 32), Al.Right, true, Theme.Violet, Theme.Turq, Theme.Gold);
             Section(g, "اتصال", 60);
             var tc = new RectangleF(20, 156, WW - 40, 240);
             Gfx.Card(g, tc, 18);
@@ -351,7 +561,9 @@ namespace TT
 
         static void Section(Graphics g, string text, float y)
         {
-            Gfx.Text(g, text, FontKit.Px(12, 700), Theme.Muted, new RectangleF(24, y, WW - 48, 22));
+            using (var st = Art.Star(new PointF(WW - 28, y + 11), 5.2f, 5.2f * Art.Khatam, 0))
+            using (var b = Art.Grad(new RectangleF(WW - 34, y + 5, 12, 12), 45f, Theme.Turq, Theme.Violet, Theme.Gold)) g.FillPath(b, st);
+            Gfx.Text(g, text, FontKit.Px(12, 700), Theme.Mix(Theme.Muted, Theme.Text, 0.35f), new RectangleF(24, y, WW - 48 - 16, 22));
         }
 
         void PaintOrb(Graphics g, Custom w)
@@ -365,7 +577,38 @@ namespace TT
             g.TranslateTransform(c.X, c.Y); g.ScaleTransform(s, s); g.TranslateTransform(-c.X, -c.Y);
 
             var ring = new RectangleF(c.X - R, c.Y - R, R * 2, R * 2);
-            bool on = state == VState.On;
+            bool on = state == VState.On, live = on || spinning;
+
+            // shamseh: an eight-point sun star (with a counter-rotating twin) behind the ring
+            float rot = live ? (float)(t * (on ? 5 : 22) % 360) : 0;
+            var sbox = new RectangleF(c.X - 110, c.Y - 110, 220, 220);
+            using (var p1 = Art.Star(c, 110, 110 * 0.80f, rot))
+            using (var p2 = Art.Star(c, 104, 104 * 0.82f, 22.5f - rot * 0.6f))
+            {
+                int a1 = live ? 120 : (int)(64 + 50 * hv);
+                using (var b = new SolidBrush(Theme.A(c1, live ? 14 : 7))) g.FillPath(b, p1);
+                using (var b = Art.Grad(sbox, 45f + rot, Theme.A(c1, a1), Theme.A(Theme.Gold, a1 * 4 / 5), Theme.A(Theme.Violet, a1)))
+                using (var p = new Pen(b, 1.3f)) g.DrawPath(p, p1);
+                using (var p = new Pen(Theme.A(Theme.Gold, live ? 60 : 30), 1f)) g.DrawPath(p, p2);
+            }
+            for (int i = 0; i < 8; i++)
+            {
+                var tp = Art.Tip(c, 110, rot, i);
+                int ga = live ? (int)(140 + 110 * Math.Sin(t * 2.4 + i * 0.9)) : (int)(90 + 60 * hv);
+                Gfx.Glow(g, tp, 5, 5, Theme.Gold, ga / 2);
+                using (var b = new SolidBrush(Theme.A(Theme.Gold, ga))) g.FillEllipse(b, tp.X - 1.6f, tp.Y - 1.6f, 3.2f, 3.2f);
+            }
+            // tick ring (gold majors)
+            using (var pt = new Pen(Color.FromArgb(live ? 46 : 26, 255, 255, 255), 1f))
+            using (var pg = new Pen(Theme.A(Theme.Gold, live ? 170 : 90), 1.4f))
+                for (int i = 0; i < 64; i++)
+                {
+                    double an = i * Math.PI * 2 / 64 - Math.PI / 2;
+                    bool major = i % 8 == 4;
+                    float r0 = R + 6, r1 = R + (major ? 12 : 8.5f);
+                    float cs = (float)Math.Cos(an), sn = (float)Math.Sin(an);
+                    g.DrawLine(major ? pg : pt, c.X + cs * r0, c.Y + sn * r0, c.X + cs * r1, c.Y + sn * r1);
+                }
             if (on)
                 foreach (var k in new[] { new { w = 26f, a = 10 }, new { w = 16f, a = 16 }, new { w = 10f, a = 26 } })
                     using (var p = new Pen(Theme.A(c2, k.a), k.w)) g.DrawEllipse(p, ring);
@@ -373,8 +616,19 @@ namespace TT
 
             if (on)
             {
-                using (var b = new LinearGradientBrush(RectangleF.Inflate(ring, 6, 6), c1, c2, 45f))
+                using (var b = Art.Grad(RectangleF.Inflate(ring, 6, 6), 45f + rot * 3, c1, c2, Theme.Mix(c1, Theme.Gold, 0.35f)))
                 using (var p = new Pen(b, 8)) g.DrawEllipse(p, ring);
+                // neon comet sweeping around the ring
+                float head = (float)(t * 75 % 360);
+                const int cs = 24; const float tail = 70;
+                for (int j = 0; j < cs; j++)
+                {
+                    float k = (j + 1) / (float)cs;
+                    using (var p = new Pen(Theme.A(Color.White, (int)(200 * k * k)), 3f))
+                        g.DrawArc(p, ring, head - tail + j * (tail / cs), tail / cs + 0.8f);
+                }
+                var hp = new PointF(c.X + (float)Math.Cos(head * Math.PI / 180) * R, c.Y + (float)Math.Sin(head * Math.PI / 180) * R);
+                Gfx.Glow(g, hp, 14, 14, Color.White, 120);
             }
             else if (spinning)
             {
@@ -396,7 +650,7 @@ namespace TT
             else
             {
                 int a = (int)(70 + 140 * hv);
-                using (var b = new LinearGradientBrush(RectangleF.Inflate(ring, 6, 6), Theme.A(Theme.Off1, a), Theme.A(Theme.Off2, a), 45f))
+                using (var b = Art.Grad(RectangleF.Inflate(ring, 6, 6), 45f, Theme.A(Theme.Violet, a), Theme.A(Theme.Pink, a * 4 / 5), Theme.A(Theme.Gold, a * 3 / 4)))
                 using (var p = new Pen(b, 8)) g.DrawEllipse(p, ring);
             }
 
@@ -428,6 +682,8 @@ namespace TT
                     using (var p = new Pen(Theme.A(Theme.Mix(c1, c2, f), a), 1.3f))
                         g.DrawEllipse(p, c.X - rr, c.Y - rr * 0.94f + f * 6, rr * 2, rr * 2 * 0.94f);
                 }
+                using (var ks = Art.Star(c, Rc * 0.86f, Rc * 0.86f * Art.Khatam, -rot * 0.5f))
+                using (var p = new Pen(Theme.A(Theme.Mix(c1, Theme.Gold, 0.4f), live ? 42 : 20), 1f)) g.DrawPath(p, ks);
                 g.Clip = clip;
                 using (var p = new Pen(Color.FromArgb(16 + (int)(20 * hv), 255, 255, 255), 1f)) g.DrawEllipse(p, core);
                 using (var p = new Pen(Color.FromArgb(34, 255, 255, 255), 1.2f)) g.DrawArc(p, RectangleF.Inflate(core, -3, -3), 205, 130);
@@ -472,7 +728,7 @@ namespace TT
             if ((state == VState.On || spinning) && Canvas.Active == main && !Canvas.Navigating)
             {
                 more = true;
-                if (ms - lastOrbFrame >= 33) { lastOrbFrame = ms; Canvas.InvalidateLogical(RectangleF.Inflate(OrbRect, 4, 4)); }
+                if (ms - lastOrbFrame >= 33) { lastOrbFrame = ms; Canvas.InvalidateLogical(RectangleF.Inflate(OrbRect, 4, 4)); Canvas.InvalidateLogical(RouteBand); Canvas.InvalidateLogical(StatsRect); }
             }
             if (toast != null)
             {
@@ -617,9 +873,9 @@ namespace TT
             if (trayIcons.TryGetValue(kind, out var ic)) return ic;
             switch (kind)
             {
-                case "on": ic = Icons.Make(Theme.On1, Theme.On2); break;
+                case "on": ic = Icons.Make(Theme.Turq, Theme.Ok); break;
                 case "wait": ic = Icons.Make(Theme.Wait1, Theme.Wait2); break;
-                default: ic = Icons.Make(Theme.Rgb(0x6A, 0x74, 0x98), Theme.Rgb(0x45, 0x4E, 0x6E)); break;
+                default: ic = Icons.Make(Theme.Rgb(0x6A, 0x74, 0x98), Theme.Rgb(0x45, 0x4E, 0x6E), false, Theme.Mix(Theme.Gold, Theme.Rgb(0x45, 0x4E, 0x6E), 0.45f)); break;
             }
             trayIcons[kind] = ic;
             return ic;
