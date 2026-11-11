@@ -1,0 +1,63 @@
+name: Android screenshots
+
+# Installs a released APK on an Android emulator, takes screenshots of the
+# main screens and pushes them to the ci-screens branch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to take the APK from'
+        default: 'android-v1.2.0'
+
+permissions:
+  contents: write
+
+jobs:
+  screens:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: android-app/tool
+
+      - name: Download APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          gh release download "${{ inputs.tag }}" -p '*x86_64.apk' -D dist -R "$GITHUB_REPOSITORY"
+          mv dist/*x86_64.apk dist/app.apk
+          ls -la dist
+
+      - name: Enable KVM and free disk
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
+          df -h / | tail -1
+
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash android-app/tool/screens.sh dist/app.apk screens
+
+      - name: Push screenshots to the ci-screens branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls screens/*.png >/dev/null 2>&1 || { echo "no screenshots"; exit 0; }
+          cd screens
+          git init -q
+          git checkout -q -b ci-screens
+          git add -A
+          git -c user.name="android-ci" -c user.email="android-ci@users.noreply.github.com" commit -qm "Android screenshots (${{ inputs.tag }})"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-screens
