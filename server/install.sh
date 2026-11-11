@@ -163,7 +163,8 @@ HOSTS
 
 log "Installing panel"
 mkdir -p "$PANEL_DIR" /etc/ttpanel /var/lib/ttpanel
-cp "$SRC"/panel/*.py "$SRC"/panel/index.html "$SRC"/panel/requirements.txt "$PANEL_DIR"/
+cp "$SRC"/panel/*.py "$SRC"/panel/*.html "$SRC"/panel/requirements.txt "$PANEL_DIR"/
+mkdir -p "$PANEL_DIR/assets" && cp "$SRC"/panel/assets/* "$PANEL_DIR/assets/"
 [ -x "$PANEL_DIR/venv/bin/python" ] || python3 -m venv "$PANEL_DIR/venv"
 "$PANEL_DIR/venv/bin/pip" install -q --upgrade pip
 "$PANEL_DIR/venv/bin/pip" install -q -r "$PANEL_DIR/requirements.txt"
