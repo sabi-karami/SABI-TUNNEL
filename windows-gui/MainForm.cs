@@ -858,7 +858,7 @@ namespace TT
             using (var tb = new TextBox { Text = s, Visible = false })
             {
                 Controls.Add(tb);
-                tb.CreateControl();
+                var h = tb.Handle;   // hidden controls get no handle from CreateControl()
                 tb.SelectAll();
                 tb.Copy();
                 Controls.Remove(tb);
