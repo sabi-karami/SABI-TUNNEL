@@ -297,18 +297,24 @@ const REGIONS={'us-east-1':[38.9,-77.4,'ویرجینیا'],'us-east-2':[40.0,-83
 'me-south-1':[26.2,50.6,'بحرین'],'il-central-1':[32.1,34.8,'تل‌آویو'],'ap-south-1':[19.1,72.9,'بمبئی'],'ap-northeast-1':[35.7,139.7,'توکیو'],'ap-northeast-2':[37.6,127,'سئول'],
 'ap-southeast-1':[1.35,103.8,'سنگاپور'],'ap-southeast-2':[-33.9,151.2,'سیدنی'],'ap-east-1':[22.3,114.2,'هنگ‌کنگ'],'af-south-1':[-33.9,18.4,'کیپ‌تاون'],'sa-east-1':[-23.5,-46.6,'سائوپائولو']};
 const HOME=[35.7,51.4,'ایران'];
-function TunnelMap(box,region,rate){
+function TunnelMap(box,region,rate,fit){
  const cv=document.createElement('canvas');box.prepend(cv);const x=cv.getContext('2d'),bg=document.createElement('canvas'),bx=bg.getContext('2d');
  const dst=REGIONS[region]||REGIONS['us-east-2'],dpr=Math.min(2,devicePixelRatio||1),calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
  const s=atob(MAP.b),u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);
  const bit=i=>(u[i>>3]>>(7-(i&7)))&1;let W,H,A,B,C,parts=[];
- const P=(la,lo)=>[(lo+180)/360*W,(MAP.lat0-la)/(MAP.h*MAP.step)*H];
+ let V={lo0:-180,lo1:180,la0:MAP.lat0,la1:MAP.lat0-MAP.h*MAP.step};
+ const P=(la,lo)=>[(lo-V.lo0)/(V.lo1-V.lo0)*W,(V.la0-la)/(V.la0-V.la1)*H];
+ function view(){if(!fit){V={lo0:-180,lo1:180,la0:MAP.lat0,la1:MAP.lat0-MAP.h*MAP.step};return}
+  const asp=W/H,lo=[HOME[1],dst[1]],la=[HOME[0],dst[0]],cx=(Math.min(...lo)+Math.max(...lo))/2,cy=(Math.min(...la)+Math.max(...la))/2+fit*.25;
+  let sx=Math.max(Math.abs(lo[0]-lo[1])+fit*2,60),sy=Math.max(Math.abs(la[0]-la[1])+fit*1.6,sx/asp);sx=Math.max(sx,sy*asp);sy=sx/asp;
+  sx=Math.min(sx,360);sy=Math.min(sy,MAP.h*MAP.step);let la0=Math.min(MAP.lat0,cy+sy/2);let la1=la0-sy;if(la1<MAP.lat0-MAP.h*MAP.step){la1=MAP.lat0-MAP.h*MAP.step;la0=la1+sy}
+  let lo0=Math.max(-180,cx-sx/2);if(lo0+sx>180)lo0=180-sx;V={lo0,lo1:lo0+sx,la0,la1}}
  const tags=[['me',HOME],['srv',dst]].map(([c,p])=>{const t=document.createElement('div');t.className='tag '+(c==='me'?'me':'');t.textContent=p[2];box.appendChild(t);return [t,p]});
  function rs(){const r=box.getBoundingClientRect();W=r.width;H=r.height;if(!W)return;[cv,bg].forEach(c=>{c.width=W*dpr;c.height=H*dpr});
-  x.setTransform(dpr,0,0,dpr,0,0);bx.setTransform(dpr,0,0,dpr,0,0);A=P(HOME[0],HOME[1]);B=P(dst[0],dst[1]);
+  x.setTransform(dpr,0,0,dpr,0,0);bx.setTransform(dpr,0,0,dpr,0,0);view();A=P(HOME[0],HOME[1]);B=P(dst[0],dst[1]);
   const mx=(A[0]+B[0])/2,d=Math.hypot(A[0]-B[0],A[1]-B[1]);C=[mx,Math.min(A[1],B[1])-d*.42];
-  const cw=W/MAP.w,ch=H/MAP.h,rr=Math.max(.7,Math.min(cw,ch)*.34);bx.clearRect(0,0,W,H);
-  for(let r=0;r<MAP.h;r++)for(let c=0;c<MAP.w;c++){if(!bit(r*MAP.w+c))continue;const px=(c+.5)*cw,py=(r+.5)*ch;
+  const cw=W/((V.lo1-V.lo0)/MAP.step),ch=H/((V.la0-V.la1)/MAP.step),rr=Math.max(.7,Math.min(cw,ch)*.34);bx.clearRect(0,0,W,H);
+  for(let r=0;r<MAP.h;r++)for(let c=0;c<MAP.w;c++){if(!bit(r*MAP.w+c))continue;const q=P(MAP.lat0-(r+.5)*MAP.step,-180+(c+.5)*MAP.step),px=q[0],py=q[1];if(px<-4||py<-4||px>W+4||py>H+4)continue;
    const near=Math.min(Math.hypot(px-A[0],py-A[1]),Math.hypot(px-B[0],py-B[1]));const k=Math.max(0,1-near/(W*.09));
    bx.fillStyle=k>0?`rgba(${Math.round(150+95*k)},${Math.round(170+29*k)},${Math.round(255-148*k)},${.22+.55*k})`:'rgba(150,170,255,.2)';
    bx.beginPath();bx.arc(px,py,rr*(1+k*.5),0,6.283);bx.fill()}
@@ -344,7 +350,7 @@ ring(document.getElementById('r_use'),hasQ?D.pct:100,hasQ?(D.pct>90?['#ff5c7a','
  try{const dt=new Intl.DateTimeFormat('fa-IR-u-ca-persian',{year:'numeric',month:'long',day:'numeric'}).format(new Date(D.exp*1000));
   const h=Math.floor(Math.max(0,left)%86400/3600);
   document.getElementById('expcap').innerHTML=`تا <b>${dt}</b>`+(left>0&&d<3?` · ${fa(d)} روز و ${fa(h)} ساعت`:'')}catch(e){}})();
-const tm=TunnelMap(document.getElementById('map'),D.region,3e5);
+const tm=TunnelMap(document.getElementById('map'),D.region,3e5,26);
 document.getElementById('hops').textContent='ایران ← '+tm.city;
 const os=/android/i.test(navigator.userAgent)?'android':/iphone|ipad|ipod|macintosh.*mobile/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)?'ios':/windows/i.test(navigator.userAgent)?'win':'';
 document.querySelectorAll('.dl').forEach(a=>{if(!a.dataset.os&&/\.exe|\.zip/.test(a.href))a.dataset.os='win'});

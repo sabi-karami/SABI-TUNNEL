@@ -576,7 +576,7 @@ async def share_page(name: str, token: str, p: str = "http2"):
         state, cls = "غیرفعال" + ({"quota": " (حجم تمام شد)", "expired": " (منقضی شد)"}.get(u.get("disabled_reason"), "")), "bad"
     else:
         state, cls = "فعال", "ok"
-    usage = _fmt_bytes(used) + (f" از {quota:g} GB" if quota else " (بدون محدودیت حجم)")
+    usage = "\u2066" + _fmt_bytes(used) + "\u2069" + (f" از \u2066{quota:g} GB\u2069" if quota else " (بدون محدودیت حجم)")
     pct = min(100, used / (quota * 10**9) * 100) if quota else 0
     if exp:
         left = exp - now
@@ -597,7 +597,7 @@ async def share_page(name: str, token: str, p: str = "http2"):
         "SERVER": html.escape(S.cfg.get("server_name") or "TrustTunnel"), "USER": html.escape(name),
         "LINK": html.escape(link), "QR": qr, "STATE": state, "STATECLS": cls, "USAGE": html.escape(usage),
         "PCT": f"{pct:.0f}", "EXPIRY": html.escape(expiry), "DOWNLOADS": "\n".join(dl),
-        "QUOTA": f"{quota:g} گیگ" if quota else "0", "USED": html.escape(_fmt_bytes(used)),
+        "QUOTA": f"{quota:g} گیگ" if quota else "0", "USED": "\u2066" + html.escape(_fmt_bytes(used)) + "\u2069",
         "EXPTS": str(int(exp)), "CREATED": str(int(u.get("created", 0) or 0)),
         "REGION": html.escape(S.cfg.get("region") or ""),
         "H2ON": "on" if proto == "http2" else "", "H3ON": "on" if proto == "http3" else "", "BASE": base,

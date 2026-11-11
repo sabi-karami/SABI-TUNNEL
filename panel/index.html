@@ -137,7 +137,7 @@ label{display:block;color:var(--mute);font-size:12.5px;margin:13px 0 6px}
 .ov .v{font-size:20px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.35}
 .ov .v small{font-size:12px;font-weight:500;color:var(--mute)}
 .pulse{display:flex;flex-direction:column}
-.pulse .ring{width:min(230px,80%);aspect-ratio:1;margin:4px auto 0}
+.pulse .ring{width:min(270px,86%);aspect-ratio:1;margin:auto}
 .pulse .ring .c .big{font-size:30px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums}
 .pulse .ring .c .lab{color:var(--mute);font-size:12px}
 .mini{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:auto;padding-top:12px}
@@ -430,18 +430,24 @@ const REGIONS={'us-east-1':[38.9,-77.4,'ویرجینیا'],'us-east-2':[40.0,-83
 'me-south-1':[26.2,50.6,'بحرین'],'il-central-1':[32.1,34.8,'تل‌آویو'],'ap-south-1':[19.1,72.9,'بمبئی'],'ap-northeast-1':[35.7,139.7,'توکیو'],'ap-northeast-2':[37.6,127,'سئول'],
 'ap-southeast-1':[1.35,103.8,'سنگاپور'],'ap-southeast-2':[-33.9,151.2,'سیدنی'],'ap-east-1':[22.3,114.2,'هنگ‌کنگ'],'af-south-1':[-33.9,18.4,'کیپ‌تاون'],'sa-east-1':[-23.5,-46.6,'سائوپائولو']};
 const HOME=[35.7,51.4,'ایران'];
-function TunnelMap(box,region,rate){
+function TunnelMap(box,region,rate,fit){
  const cv=document.createElement('canvas');box.prepend(cv);const x=cv.getContext('2d'),bg=document.createElement('canvas'),bx=bg.getContext('2d');
  const dst=REGIONS[region]||REGIONS['us-east-2'],dpr=Math.min(2,devicePixelRatio||1),calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
  const s=atob(MAP.b),u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);
  const bit=i=>(u[i>>3]>>(7-(i&7)))&1;let W,H,A,B,C,parts=[];
- const P=(la,lo)=>[(lo+180)/360*W,(MAP.lat0-la)/(MAP.h*MAP.step)*H];
+ let V={lo0:-180,lo1:180,la0:MAP.lat0,la1:MAP.lat0-MAP.h*MAP.step};
+ const P=(la,lo)=>[(lo-V.lo0)/(V.lo1-V.lo0)*W,(V.la0-la)/(V.la0-V.la1)*H];
+ function view(){if(!fit){V={lo0:-180,lo1:180,la0:MAP.lat0,la1:MAP.lat0-MAP.h*MAP.step};return}
+  const asp=W/H,lo=[HOME[1],dst[1]],la=[HOME[0],dst[0]],cx=(Math.min(...lo)+Math.max(...lo))/2,cy=(Math.min(...la)+Math.max(...la))/2+fit*.25;
+  let sx=Math.max(Math.abs(lo[0]-lo[1])+fit*2,60),sy=Math.max(Math.abs(la[0]-la[1])+fit*1.6,sx/asp);sx=Math.max(sx,sy*asp);sy=sx/asp;
+  sx=Math.min(sx,360);sy=Math.min(sy,MAP.h*MAP.step);let la0=Math.min(MAP.lat0,cy+sy/2);let la1=la0-sy;if(la1<MAP.lat0-MAP.h*MAP.step){la1=MAP.lat0-MAP.h*MAP.step;la0=la1+sy}
+  let lo0=Math.max(-180,cx-sx/2);if(lo0+sx>180)lo0=180-sx;V={lo0,lo1:lo0+sx,la0,la1}}
  const tags=[['me',HOME],['srv',dst]].map(([c,p])=>{const t=document.createElement('div');t.className='tag '+(c==='me'?'me':'');t.textContent=p[2];box.appendChild(t);return [t,p]});
  function rs(){const r=box.getBoundingClientRect();W=r.width;H=r.height;if(!W)return;[cv,bg].forEach(c=>{c.width=W*dpr;c.height=H*dpr});
-  x.setTransform(dpr,0,0,dpr,0,0);bx.setTransform(dpr,0,0,dpr,0,0);A=P(HOME[0],HOME[1]);B=P(dst[0],dst[1]);
+  x.setTransform(dpr,0,0,dpr,0,0);bx.setTransform(dpr,0,0,dpr,0,0);view();A=P(HOME[0],HOME[1]);B=P(dst[0],dst[1]);
   const mx=(A[0]+B[0])/2,d=Math.hypot(A[0]-B[0],A[1]-B[1]);C=[mx,Math.min(A[1],B[1])-d*.42];
-  const cw=W/MAP.w,ch=H/MAP.h,rr=Math.max(.7,Math.min(cw,ch)*.34);bx.clearRect(0,0,W,H);
-  for(let r=0;r<MAP.h;r++)for(let c=0;c<MAP.w;c++){if(!bit(r*MAP.w+c))continue;const px=(c+.5)*cw,py=(r+.5)*ch;
+  const cw=W/((V.lo1-V.lo0)/MAP.step),ch=H/((V.la0-V.la1)/MAP.step),rr=Math.max(.7,Math.min(cw,ch)*.34);bx.clearRect(0,0,W,H);
+  for(let r=0;r<MAP.h;r++)for(let c=0;c<MAP.w;c++){if(!bit(r*MAP.w+c))continue;const q=P(MAP.lat0-(r+.5)*MAP.step,-180+(c+.5)*MAP.step),px=q[0],py=q[1];if(px<-4||py<-4||px>W+4||py>H+4)continue;
    const near=Math.min(Math.hypot(px-A[0],py-A[1]),Math.hypot(px-B[0],py-B[1]));const k=Math.max(0,1-near/(W*.09));
    bx.fillStyle=k>0?`rgba(${Math.round(150+95*k)},${Math.round(170+29*k)},${Math.round(255-148*k)},${.22+.55*k})`:'rgba(150,170,255,.2)';
    bx.beginPath();bx.arc(px,py,rr*(1+k*.5),0,6.283);bx.fill()}
@@ -467,8 +473,9 @@ const IC={link:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
  pow:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18.4 6.6a9 9 0 1 1-12.8 0M12 2v10"/></svg>',
  del:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>'};
 
-function fmtB(b){b=+b||0;const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1000&&i<u.length-1){b/=1000;i++}return (b<10&&i?b.toFixed(2):b<100&&i?b.toFixed(1):Math.round(b))+' '+u[i]}
-function fmtRate(b){return fmtB(b*8).replace('B','b')+'/s'}
+function fmtN(b){b=+b||0;const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1000&&i<u.length-1){b/=1000;i++}return (b<10&&i?b.toFixed(2):b<100&&i?b.toFixed(1):Math.round(b))+' '+u[i]}
+function fmtB(b){return '\u2066'+fmtN(b)+'\u2069'}
+function fmtRate(b){return '\u2066'+fmtN(b*8).replace('B','b')+'/s\u2069'}
 function ago(ts){if(!ts)return 'هرگز';const s=Date.now()/1000-ts;if(s<60)return 'همین حالا';if(s<3600)return fa(Math.floor(s/60))+' دقیقه پیش';if(s<86400)return fa(Math.floor(s/3600))+' ساعت پیش';return fa(Math.floor(s/86400))+' روز پیش'}
 function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('show'),2600)}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -510,7 +517,7 @@ function renderStatus(){
   const s=ST,y=s.system||{},h=s.history||[];
   $('#sname').textContent=s.server_name||'TrustTunnel';$('#shost').textContent=s.tt_host+(s.region?' · '+s.region:'');document.title=(s.server_name||'TrustTunnel')+' · پنل';
   const ok=s.service_active&&s.metrics_ok;const p=$('#spill');p.classList.toggle('bad',!ok);p.lastElementChild.textContent=ok?'آنلاین':'مشکل در سرویس';
-  if(!MAPO)MAPO=TunnelMap($('#map'),s.region,()=>RATE);
+  if(!MAPO)MAPO=TunnelMap($('#map'),s.region,()=>RATE,34);
   $('#mapcap').textContent='ایران ⟵ '+MAPO.city+(s.region?' ('+s.region+')':'');
   const last=h[h.length-1]||[0,0,0,0];RATE=(last[1]||0)+(last[2]||0);
   $('#c_down').textContent=fmtRate(last[2]);$('#c_up').textContent=fmtRate(last[1]);
@@ -539,7 +546,7 @@ function renderStatus(){
   if(y.disk_total){$('#c_disk_b').firstElementChild.style.width=(y.disk_used/y.disk_total*100)+'%';$('#c_disk').textContent='دیسک '+fmtB(y.disk_used)+' از '+fmtB(y.disk_total)}
   const info=[['دامنه',s.tt_host],['IPv4',s.ipv4||'—'],['IPv6',s.ipv6||'—'],['منطقه AWS',(s.region||'—')+(MAPO?' · '+MAPO.city:'')],['نسخه TrustTunnel',s.version],
     ['DNS',(s.dns_upstreams||[]).join(' , ')||'—'],['پروتکل‌ها','HTTP/2 (TCP) · HTTP/3 (QUIC)'],['پورت','443 tcp + udp'],['ماه جاری',s.month]];
-  $('#sinfo').innerHTML=info.map(([k,v])=>`<div><span>${k}</span><b class="mono" title="${esc(v)}">${esc(v)}</b><button title="کپی" onclick="copyText(this.previousElementSibling.textContent,'کپی شد')">⧉</button></div>`).join('');
+  $('#sinfo').innerHTML=info.map(([k,v])=>`<div><span>${k}</span><b class="${/[\u0600-\u06ff]/.test(v)?'':'mono'}" title="${esc(v)}">${esc(v)}</b><button title="کپی" onclick="copyText(this.previousElementSibling.textContent,'کپی شد')">⧉</button></div>`).join('');
   drawChart(h);
 }
 let CH=[];
