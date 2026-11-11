@@ -1,0 +1,32 @@
+name: Attach release files
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (e.g. v2.1.1)
+        required: true
+      base_url:
+        description: Folder URL that holds TrustTunnel-Setup.exe and TrustTunnel-Windows-GUI.zip
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download and attach
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          BASE: ${{ inputs.base_url }}
+        run: |
+          set -euo pipefail
+          for f in TrustTunnel-Setup.exe TrustTunnel-Windows-GUI.zip; do
+            curl -fsSL --retry 3 "${BASE%/}/$f" -o "$f"
+          done
+          sha256sum TrustTunnel-Setup.exe TrustTunnel-Windows-GUI.zip | tee SHA256SUMS.txt
+          gh release upload "$TAG" TrustTunnel-Setup.exe TrustTunnel-Windows-GUI.zip SHA256SUMS.txt --clobber -R "$GITHUB_REPOSITORY"
