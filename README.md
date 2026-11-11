@@ -1,28 +1,82 @@
-# TrustTunnel Stack
+<div align="center">
+
+<img src="docs/hero.svg" alt="TrustTunnel · Sabi VPN" width="100%">
+
+<br>
+
+<img alt="version" src="https://img.shields.io/badge/version-3.0.0-8b5cf6?style=for-the-badge&labelColor=0d102c">
+<img alt="protocol" src="https://img.shields.io/badge/HTTP%2F2%20%C2%B7%20HTTP%2F3-QUIC-2de2e6?style=for-the-badge&labelColor=0d102c">
+<img alt="platforms" src="https://img.shields.io/badge/Android%20%C2%B7%20iOS%20%C2%B7%20Windows-ready-f5c76b?style=for-the-badge&labelColor=0d102c">
+<img alt="cloud" src="https://img.shields.io/badge/AWS%20EC2-Cloudflare%20DNS-ff4fd8?style=for-the-badge&labelColor=0d102c">
+<a href="../../actions/workflows/windows-app.yml"><img alt="Windows app" src="../../actions/workflows/windows-app.yml/badge.svg"></a>
+
+</div>
 
 <div dir="rtl">
 
-سرور شخصی VPN بر پایه‌ی پروتکل متن‌باز [TrustTunnel](https://github.com/TrustTunnel/TrustTunnel) (ساخت AdGuard) به همراه **پنل مدیریت وب فارسی**، با یک دستور روی AWS EC2 و Cloudflare DNS.
+سرور شخصی VPN بر پایه‌ی پروتکل متن‌باز [TrustTunnel](https://github.com/TrustTunnel/TrustTunnel) (ساخت AdGuard) به همراه **پنل مدیریت وب فارسی**، **صفحه‌ی اشتراک برای هر کاربر** و **برنامه‌های ویندوز و اندروید** با یک نشان و یک طراحی؛ با یک دستور روی AWS EC2 و Cloudflare DNS. ترافیک از بیرون دقیقاً شبیه یک سایت HTTPS معمولی است.
 
-## چه چیزی می‌سازد؟
+#### نمای پنل مدیریت
 
+<img src="docs/screens/panel.jpg" alt="پنل مدیریت" width="100%">
+
+<table>
+<tr>
+<td width="62%" valign="top"><img src="docs/screens/users.jpg" alt="کاربران"><br><sub>مدیریت کاربران: سهمیه، انقضا، حلقه‌ی مصرف، جست‌وجو و فیلتر</sub></td>
+<td width="38%" valign="top"><img src="docs/screens/share.jpg" alt="صفحه‌ی اشتراک"><br><sub>صفحه‌ی اشتراک هر کاربر: QR، دانلود، راهنما</sub></td>
+</tr>
+</table>
+
+#### برنامه‌ی ویندوز
+
+<img src="docs/screens/windows.png" alt="برنامه‌ی ویندوز: قطع، در حال اتصال، وصل، تنظیمات" width="100%">
+
+#### برنامه‌ی اندروید
+
+<img src="docs/screens/android.jpg" alt="برنامه‌ی اندروید: صفحه‌ی آغاز و صفحه‌ی اصلی" width="100%">
+
+## معماری
+
+```mermaid
+flowchart RL
+    subgraph Clients["دستگاه‌های کاربر"]
+        A["📱 اندروید / آیفون<br/>اپ TrustTunnel"]
+        W["🪟 ویندوز<br/>TrustTunnel GUI"]
+    end
+    subgraph AWS["AWS EC2 · t4g.micro · IPv4 + IPv6"]
+        E["trusttunnel_endpoint 1.1.0<br/>[::]:443 tcp + udp"]
+        P["ttpanel (FastAPI)<br/>127.0.0.1:8080"]
+        M["metrics<br/>127.0.0.1:1987"]
+        C["certbot<br/>Let's Encrypt"]
+    end
+    CF["☁️ Cloudflare DNS<br/>DNS only"]
+    NET(("🌍 اینترنت"))
+    A -- "HTTP/2 (TCP) یا HTTP/3 (QUIC)" --> E
+    W -- "HTTP/2 (TCP) یا HTTP/3 (QUIC)" --> E
+    E -- "SNI = ttpanel-*" --> P
+    P --- M
+    C -. گواهی .-> E
+    CF -. "A / AAAA" .-> E
+    E ==> NET
+    classDef c fill:#0d102c,stroke:#2de2e6,color:#eff2ff
+    classDef s fill:#0d102c,stroke:#8b5cf6,color:#eff2ff
+    classDef g fill:#0d102c,stroke:#f5c76b,color:#eff2ff
+    class A,W c
+    class E,P,M,C s
+    class CF,NET g
 ```
- گوشی/لپ‌تاپ (اپ TrustTunnel)
-        │  HTTPS واقعی روی 443  (HTTP/2 روی TCP  یا  HTTP/3 روی QUIC/UDP)
-        ▼
- tt-oh.example.com  ──►  EC2 (t4g.micro, Ubuntu 24.04, IPv4 + IPv6)
-                          ├─ trusttunnel_endpoint v1.1.0   [::]:443 tcp+udp
-                          │     └─ SNI = ttpanel-oh.example.com ─► reverse proxy ─► 127.0.0.1:8080
-                          ├─ ttpanel (FastAPI)  127.0.0.1:8080   ← پنل وب
-                          ├─ metrics           127.0.0.1:1987   ← آمار مصرف هر کاربر
-                          └─ certbot (Let's Encrypt، تمدید خودکار)
-```
 
-- ترافیک از بیرون دقیقاً شبیه یک سایت HTTPS معمولی با گواهی معتبر است؛ پنل هم روی همان پورت 443 و با SNI جدا سرو می‌شود (پورت اضافه‌ای باز نیست).
+- پنل هم روی همان پورت 443 و با SNI جدا سرو می‌شود (پورت اضافه‌ای باز نیست).
 - دو پشته‌ی کامل: سرور هم با IPv4 و هم با IPv6 در دسترس است و ترافیک خروجی کاربران هم روی هر دو کار می‌کند.
 - تنظیمات کرنل: BBR + fq، بافرهای بزرگ UDP برای QUIC، swap یک گیگ.
 
 ## امکانات پنل
+
+- طراحی «شب فیروزه»: نقش گره و رنگ‌های فیروزه‌ای و طلایی، شفق نئونی، آسمان پرستاره و **نقشه‌ی زنده‌ی تونل** از ایران تا منطقه‌ی سرور
+- نبض سرور (سرعت لحظه‌ای نسبت به اوج یک ساعت اخیر)، پیش‌بینی مصرف تا آخر ماه، حلقه‌ی گواهی TLS و منابع سرور
+- ساعت و تاریخ شمسی زنده، شمارش معکوس به‌روزرسانی، میان‌بر `/` برای جست‌وجو
+- **صفحه‌ی اشتراک هر کاربر** با QR، دکمه‌ی «افزودن به TrustTunnel»، راهنمای قدم‌به‌قدم و **دانلود مستقیم برنامه‌ها از خود سرور** (APK اندروید و نصب‌کننده‌ی ویندوز)؛ گزینه‌ی مناسب دستگاه خودکار بالا می‌آید
+- یک نشان در همه‌جا: خاتم طلایی و طاق فیروزه‌ای، در پنل، صفحه‌ی اشتراک، برنامه‌ی ویندوز و اندروید
 
 - ورود امن (PBKDF2، کوکی HttpOnly/Secure/SameSite، محدودیت تلاش ناموفق)
 - افزودن / ویرایش / غیرفعال‌سازی / حذف کاربر، تولید مجدد رمز
@@ -95,23 +149,27 @@ server/install.sh       نصب‌کننده‌ی سرور (endpoint، گواهی
 panel/app.py            بک‌اند پنل (FastAPI) + CLI
 panel/index.html        رابط کاربری فارسی
 panel/deeplink.py       سازنده‌ی لینک tt:// نسخه ۱
-panel/share.html        صفحه‌ی اشتراک کاربر (QR، لینک، دانلود برنامه)
+panel/share.html        صفحه‌ی اشتراک کاربر (QR، لینک، دانلود برنامه، راهنما)
+panel/assets/           فونت Vazirmatn (woff2) و آیکون‌های سایت، بدون CDN
+docs/                   بنر متحرک و تصاویر README
 windows-gui/            برنامه‌ی گرافیکی ویندوز (C# WinForms) + نصب‌کننده‌ی Inno Setup
 android-app/            برنامه‌ی اندروید «شب فیروزه» (Flutter، بر پایه‌ی کلاینت رسمی ۱٫۲٫۰)
-.github/workflows/      ساخت برنامه‌های ویندوز و اندروید، اسکن Defender
+.github/workflows/      ساخت، تست و انتشار برنامه‌های ویندوز و اندروید، اسکن Defender، تصویر رابط کاربری
 ```
 
 ## برنامه‌ی ویندوز (TrustTunnel GUI)
 
 یک برنامه‌ی گرافیکی فارسی برای ویندوز ۱۰/۱۱ که روی کلاینت رسمی TrustTunnel (`trusttunnel_client.exe` + `wintun.dll`) ساخته شده است. کد آن در پوشه‌ی `windows-gui/` است.
 
-**دانلود (نسخه‌ی ۲٫۱٫۱):** از بخش [Releases](../../releases/latest) همین مخزن، یا از صفحه‌ی اشتراک هر کاربر در پنل.
+**دانلود (نسخه‌ی ۳٫۰٫۰):** از صفحه‌ی اشتراک هر کاربر در پنل (از خود سرور)، یا از Release با برچسب [`v3.0.0`](../../releases/tag/v3.0.0) همین مخزن.
 
 - `TrustTunnel-Setup.exe`: نصب‌کننده (پیشنهادی)؛ میانبر، ثبت لینک‌های `tt://` و حذف از Settings ← Apps
 - `TrustTunnel-Windows-GUI.zip`: نسخه‌ی پرتابل بدون نصب
 
 **امکانات**
 
+- نشان تازه، همان آیکون اندروید؛ آیکون کنار ساعت با رنگ وضعیت (فیروزه‌ای: وصل، طلایی: در حال اتصال، کم‌رنگ: قطع)
+- طراحی تازه‌ی «شب فیروزه» (نسخه‌ی ۳): شمسه‌ی هشت‌پر چرخان دور دکمه‌ی اتصال، حلقه‌ی نئون، آسمان شفق با نقش گره و ستاره‌ها، نقشه‌ی نقطه‌ای جهان با مسیر زنده‌ی تونل از ایران تا سرور
 - دکمه‌ی بزرگ اتصال/قطع با انیمیشن وضعیت، زمان اتصال و نمایش IP خروجی
 - انتخاب HTTP/2 یا HTTP/3، نمودار زنده‌ی سرعت دانلود/آپلود
 - ذخیره‌ی چند سرور و جابه‌جایی سریع بین آن‌ها
@@ -122,7 +180,8 @@ android-app/            برنامه‌ی اندروید «شب فیروزه» (
 
 **ساخت و تست خودکار (CI)**
 
-- `.github/workflows/windows-app.yml`: با هر تغییر در `windows-gui/` برنامه و نصب‌کننده را روی Windows می‌سازد و نصب، اتصال/قطع، HTTP/3، لینک `tt://`، جابه‌جایی سرور و حذف را تست می‌کند.
+- `.github/workflows/windows-app.yml`: با هر تغییر در `windows-gui/` برنامه و نصب‌کننده را روی Windows می‌سازد (اجرای دستی با گزینه‌ی `release` آن را در Release منتشر می‌کند)، از همه‌ی حالت‌های رابط کاربری تصویر می‌گیرد (`TrustTunnel.exe --shots=DIR`) و در صورت وجود secretهای تست، نصب، اتصال/قطع، HTTP/3، لینک `tt://`، جابه‌جایی سرور و حذف را روی سرور واقعی تست می‌کند.
+- `.github/workflows/ui-shots.yml`: از پنل، صفحه‌ی اشتراک و بنر بالای همین صفحه با داده‌ی نمونه تصویر می‌گیرد.
 - `.github/workflows/defender-scan.yml`: همه‌ی فایل‌های خروجی را با Microsoft Defender به‌روز اسکن می‌کند؛ اگر چیزی شناسایی شود بیلد رد می‌شود.
 
 **نکته‌ها**
@@ -135,9 +194,7 @@ android-app/            برنامه‌ی اندروید «شب فیروزه» (
 
 نسخه‌ی فارسی و بازطراحی‌شده‌ی [کلاینت رسمی TrustTunnel](https://github.com/TrustTunnel/TrustTunnelFlutterClient) (ساخت AdGuard، مجوز Apache-2.0) بر پایه‌ی **آخرین نسخه‌ی سازنده، ۱٫۲٫۰**. کد آن در پوشه‌ی `android-app/` است و هسته‌ی VPN همان کتابخانه‌ی رسمی TrustTunnel است.
 
-<img src="docs/screens/android.jpg" alt="برنامه‌ی اندروید: صفحه‌ی آغاز و صفحه‌ی اصلی" width="100%">
-
-**دانلود:** از Release با برچسب [`android-v1.2.0`](../../releases/tag/android-v1.2.0).
+**دانلود:** از صفحه‌ی اشتراک هر کاربر در پنل (فایل‌ها از خود سرور دانلود می‌شوند)، یا از Release با برچسب [`android-v1.2.0`](../../releases/tag/android-v1.2.0).
 
 - `TrustTunnel-Firuze-1.2.0-arm64-v8a.apk`: برای بیشتر گوشی‌های امروزی (پیشنهادی)
 - `TrustTunnel-Firuze-1.2.0-armeabi-v7a.apk`: گوشی‌های قدیمی ۳۲بیتی
