@@ -86,27 +86,37 @@ class _ServerDetailsFullScreenViewState extends State<ServerDetailsFullScreenVie
         SliverToBoxAdapter(
           child: loading ? const SizedBox.shrink() : widget.body,
         ),
-        SliverFillRemaining(
-          hasScrollBody: false,
-          fillOverscroll: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Spacer(),
-              const Divider(),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: FilledButton(
-                  onPressed: _hasChanges ? () => _submit(context) : null,
-                  child: Text(
-                    _editing ? context.ln.save : context.ln.add,
-                  ),
-                ),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      ],
+    ),
+    // Firuze: the submit button stays visible above the fold, so a server
+    // imported from a tt:// link can be added with a single tap.
+    bottomNavigationBar: DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            const Color(0xFF060814).withValues(alpha: 0),
+            const Color(0xFF060814).withValues(alpha: 0.92),
+          ],
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: SizedBox(
+            height: 52,
+            child: FilledButton(
+              onPressed: _hasChanges ? () => _submit(context) : null,
+              child: Text(
+                _editing ? context.ln.save : context.ln.add,
               ),
-            ],
+            ),
           ),
         ),
-      ],
+      ),
     ),
   );
 
