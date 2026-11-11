@@ -23,10 +23,11 @@ def share():
     win='<svg viewBox="0 0 24 24"><path d="M3 5.6 10.4 4.6v7H3zM11.6 4.4 21 3v8.6h-9.4zM3 12.8h7.4v7L3 18.8zM11.6 12.8H21V21l-9.4-1.3z"/></svg>'
     emb='<svg viewBox="0 0 64 64"><use href="#logo"/></svg>'
     item=lambda o,ic,t,n: f'<a class="dl ours" data-os="{o}" href="#" download><span class="ic">{ic}</span><div><b>{t}</b><span>{n}</span></div><span class="go">‹</span></a>'
-    dla=item('android',emb,'اندروید · TrustTunnel شب فیروزه','فایل APK برای بیشتر گوشی‌ها (arm64) · 35.2 MB')+item('android',emb,'اندروید · گوشی‌های قدیمی‌تر','اگر نسخه‌ی بالا نصب نشد (32 بیتی، armeabi-v7a) · 30.4 MB')
-    dlw=item('win',win,'ویندوز — نصب‌کننده','Windows 10/11 · نصب با یک کلیک، میان‌بر و حذف از Apps · 6.3 MB')+item('win',win,'ویندوز — نسخه‌ی zip','بدون نصب؛ پوشه را باز و TrustTunnel.exe را اجرا کنید · 6.2 MB')
-    v={"SERVER":"Sabi VPN","USER":"sami-pc","LINK":H.escape(LINK),"QR":qr,"STATE":"فعال","STATECLS":"ok","USAGE":"11.2 GB از 50 GB","PCT":"22",
-       "EXPIRY":"23 روز مانده","DL_ANDROID":dla,"DL_WIN":dlw,"H2ON":"on","H3ON":"","BASE":"/s","QUOTA":"50 گیگ","USED":"11.2 GB","EXPTS":str(now+23*86400),
+    z=lambda t: '\u2066'+t+'\u2069'   # LRI/PDI isolates, exactly like app.py
+    dla=item('android',emb,'اندروید · TrustTunnel شب فیروزه','فایل APK برای بیشتر گوشی‌ها (arm64) · '+z('35.2 MB'))+item('android',emb,'اندروید · گوشی‌های قدیمی‌تر','اگر نسخه‌ی بالا نصب نشد (32 بیتی، armeabi-v7a) · '+z('30.4 MB'))
+    dlw=item('win',win,'ویندوز — نصب‌کننده','Windows 10/11 · نصب با یک کلیک، میان‌بر و حذف از Apps · '+z('6.5 MB'))+item('win',win,'ویندوز — نسخه‌ی zip','بدون نصب؛ پوشه را باز و TrustTunnel.exe را اجرا کنید · '+z('6.5 MB'))
+    v={"SERVER":"Sabi VPN","USER":"sami-pc","LINK":H.escape(LINK),"QR":qr,"STATE":"فعال","STATECLS":"ok","USAGE":"\u206611.2 GB\u2069 از \u206650 GB\u2069","PCT":"22",
+       "EXPIRY":"23 روز مانده","DL_ANDROID":dla,"DL_WIN":dlw,"H2ON":"on","H3ON":"","BASE":"/s","QUOTA":"50 گیگ","USED":"\u206611.2 GB\u2069","EXPTS":str(now+23*86400),
        "CREATED":str(now-7*86400),"REGION":"us-east-2"}
     for k,x in v.items(): page=page.replace('{{'+k+'}}',x)
     return page
