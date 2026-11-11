@@ -1,0 +1,20 @@
+TrustTunnel Android — "Shab-e Firuze" (Turquoise Night) edition
+
+This directory is a modified copy of TrustTunnel Flutter Client v1.2.0
+https://github.com/TrustTunnel/TrustTunnelFlutterClient (tag v1.2.0, commit 90ff983)
+Copyright AdGuard Software Ltd., licensed under the Apache License 2.0 (see LICENSE).
+
+Changes made in this edition:
+- Dark "Shab-e Firuze" theme: new colour tokens, rounded inputs, glass navigation bar,
+  dialogs and snack bars (lib/common/theme/light_theme.dart).
+- New decorative widgets in lib/widgets/firuze/: animated night sky, glass card,
+  portal connect button (TunnelOrb) and animated tunnel route.
+- New home hero on the servers screen (tunnel_hero.dart, servers_screen_view.dart).
+- Persian (fa) translation, Persian-first RTL locale, mirrored directional icons.
+- Vazirmatn font (SIL OFL 1.1, assets/fonts/vazirmatn/OFL.txt) replaces Roboto.
+- New launcher icon, adaptive/monochrome icon, splash screens and in-app artwork.
+- Android applicationId com.sabi.trusttunnel; release signing falls back to the
+  debug key when no keystore is provided.
+- Removed the iOS, macOS, Linux and Windows runner folders and the upstream CI.
+
+The VPN engine (plugins/vpn_plugin and the TrustTunnel native library) is unchanged.

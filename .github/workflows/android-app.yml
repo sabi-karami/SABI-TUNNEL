@@ -1,0 +1,140 @@
+name: Android app
+
+# Builds the «شب فیروزه» edition of the TrustTunnel Flutter client (upstream v1.2.0)
+# and, on demand, publishes the APKs as a GitHub Release.
+
+on:
+  push:
+    paths:
+      - 'android-app/**'
+      - '.github/workflows/android-app.yml'
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Publish a GitHub Release with the APKs'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: read
+
+concurrency:
+  group: android-app-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_VERSION: '1.2.0'
+  RELEASE_TAG: 'android-v1.2.0'
+  FLUTTER_VERSION: '3.38.3'
+  TT_LIB: 'com/adguard/trusttunnel/trusttunnel-client-android/1.1.5-rc.3/trusttunnel-client-android-1.1.5-rc.3.pom'
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: bash
+        working-directory: android-app
+    env:
+      # The TrustTunnel native library is published on GitHub Packages (Maven),
+      # which always needs a token. A GPR_KEY secret (classic PAT, read:packages)
+      # wins; otherwise the workflow token is tried.
+      GPR_KEY: ${{ secrets.GPR_KEY || github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Check access to the TrustTunnel Android library
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -u "token:${GPR_KEY}" \
+            "https://maven.pkg.github.com/TrustTunnel/TrustTunnelClient/${TT_LIB}")
+          echo "GitHub Packages answered HTTP ${code}"
+          if [ "$code" != "200" ]; then
+            echo "::error::Cannot read the TrustTunnel library from GitHub Packages (HTTP ${code}). Add a repository secret GPR_KEY holding a classic personal access token with the read:packages scope."
+            exit 1
+          fi
+
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::warning::No ANDROID_KEYSTORE_B64 secret; the APK will be signed with a throwaway debug key."
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.p12"
+          {
+            echo "ORG_GRADLE_PROJECT_signingConfigKeyStorePath=$RUNNER_TEMP/release.p12"
+            echo "ORG_GRADLE_PROJECT_signingConfigKeyStorePassword=$KEYSTORE_PASSWORD"
+            echo "ORG_GRADLE_PROJECT_signingConfigKeyPassword=$KEYSTORE_PASSWORD"
+            echo "ORG_GRADLE_PROJECT_signingConfigKeyAlias=$KEY_ALIAS"
+          } >> "$GITHUB_ENV"
+
+      - name: Dependencies and code generation
+        run: make init
+
+      - name: Analyze (informational)
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
+
+      - name: Build APKs
+        run: |
+          set -euo pipefail
+          BUILD_NUMBER=$((120000 + GITHUB_RUN_NUMBER))
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          mkdir -p ../dist
+          flutter build apk --release --split-per-abi \
+            --build-name="$APP_VERSION" --build-number="$BUILD_NUMBER" --no-pub
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            cp "build/app/outputs/flutter-apk/app-${abi}-release.apk" "../dist/TrustTunnel-Firuze-${APP_VERSION}-${abi}.apk"
+          done
+          flutter build apk --release \
+            --build-name="$APP_VERSION" --build-number="$BUILD_NUMBER" --no-pub
+          cp build/app/outputs/flutter-apk/app-release.apk "../dist/TrustTunnel-Firuze-${APP_VERSION}-universal.apk"
+          cd ../dist
+          sha256sum *.apk > SHA256SUMS.txt
+          ls -la
+          cat SHA256SUMS.txt
+
+      - name: Verify signature
+        run: |
+          BT=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
+          "$ANDROID_HOME/build-tools/$BT/apksigner" verify --print-certs "../dist/TrustTunnel-Firuze-${APP_VERSION}-universal.apk" | grep -E 'DN|SHA-256' || true
+          "$ANDROID_HOME/build-tools/$BT/aapt2" dump badging "../dist/TrustTunnel-Firuze-${APP_VERSION}-arm64-v8a.apk" | head -3 || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TrustTunnel-Firuze-Android
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Publish release
+        if: github.event_name == 'workflow_dispatch' && inputs.release
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+            gh release edit "$RELEASE_TAG" --notes-file android-app/RELEASE_NOTES.md
+          else
+            gh release create "$RELEASE_TAG" dist/* \
+              --target "$GITHUB_SHA" \
+              --title "TrustTunnel Android ${APP_VERSION} · شب فیروزه" \
+              --notes-file android-app/RELEASE_NOTES.md
+          fi
