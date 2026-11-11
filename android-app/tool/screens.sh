@@ -6,7 +6,9 @@ APK="$1"; OUT="$2"; PKG=com.sabi.trusttunnel
 mkdir -p "$OUT"
 DEMO_LINK='tt://?AAEBAQ5kZS5leGFtcGxlLmNvbQIQMjAzLjAuMTEzLjEwOjQ0MwUEZGVtbwYNZGVtby1wYXNzLTEyMwkBAgwS2YHYsdin2YbaqdmB2YjYsdiq'
 
-shot() { sleep "${2:-3}"; adb exec-out screencap -p > "$OUT/$1.png"; dump "$1"; echo "shot $1"; }
+# Emulator-only: dismiss "System UI isn't responding" style dialogs.
+unstick() { for _ in 1 2 3; do tap_text '=Wait' >/dev/null 2>&1 || return 0; sleep 2; done; }
+shot() { sleep "${2:-3}"; unstick; adb exec-out screencap -p > "$OUT/$1.png"; dump "$1"; echo "shot $1"; }
 dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml "$OUT/$1.xml" >/dev/null 2>&1 || true; }
 
 # Taps the first node whose text or content-desc contains one of the given strings.
@@ -33,6 +35,8 @@ PY
 }
 
 adb shell settings put global window_animation_scale 1
+# Let the emulator settle so System UI is responsive before the app starts.
+sleep 40; unstick
 adb shell settings put system screen_off_timeout 600000
 adb install -r -g "$APK" || exit 1
 adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1

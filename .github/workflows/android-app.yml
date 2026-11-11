@@ -137,6 +137,8 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6
+          cores: 4
+          ram-size: 4096M
           disable-animations: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: bash android-app/tool/screens.sh dist/TrustTunnel-Firuze-${{ env.APP_VERSION }}-x86_64.apk screens
