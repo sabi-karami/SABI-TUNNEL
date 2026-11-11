@@ -1,4 +1,4 @@
-# TrustTunnel launcher for Windows (Sabi VPN)
+# SABI TUNNEL console launcher for Windows (the app itself is SabiTunnel.exe)
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 $cfg    = Join-Path $PSScriptRoot 'trusttunnel_client.toml'
@@ -13,6 +13,7 @@ if (-not (Test-Path $cfg)) {
     Write-Host ''
     Write-Host '=== First-time setup ===' -ForegroundColor Cyan
     Write-Host 'Copy your tt:// link from the panel, paste it here (right-click or Ctrl+V) and press Enter.'
+    Write-Host '(Or start SabiTunnel.exe once: it downloads the default servers by itself.)'
     do {
         $link = (Read-Host 'Link').Trim().Trim('"').Trim("'")
         if ($link -notlike 'tt://*') { Write-Host 'The link must start with tt://' -ForegroundColor Yellow }

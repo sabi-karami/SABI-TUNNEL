@@ -136,7 +136,7 @@ namespace TT
             {
                 var server = IPAddress.Parse(new Uri(url).Host);
                 var rq = (HttpWebRequest)WebRequest.Create(url + Uri.EscapeDataString(host));
-                rq.Accept = "application/dns-json"; rq.UserAgent = "TrustTunnelGUI"; rq.Proxy = null; rq.KeepAlive = false;
+                rq.Accept = "application/dns-json"; rq.UserAgent = "SabiTunnel"; rq.Proxy = null; rq.KeepAlive = false;
                 rq.Timeout = ms; rq.ReadWriteTimeout = ms;
                 // The URL is an IP: accept a trusted certificate that is issued to exactly that IP.
                 rq.ServerCertificateValidationCallback = (s, cert, chain, errors) =>

@@ -47,7 +47,18 @@ namespace TT
     /// <summary>"Run at Windows sign-in" via a Task Scheduler task (elevated, no UAC prompt, works on battery).</summary>
     static class AutoStart
     {
-        const string TaskName = "TrustTunnelGUI";
+        const string TaskName = "SabiTunnel", OldTaskName = "TrustTunnelGUI";   // 3.0.x and older used the old name
+
+        /// <summary>Moves the sign-in task of an older version (TrustTunnel.exe) over to this app.</summary>
+        public static void Migrate()
+        {
+            try
+            {
+                if (Run("/Query /TN " + OldTaskName) != 0) return;
+                if (Set(true)) Run("/Delete /F /TN " + OldTaskName);
+            }
+            catch { }
+        }
 
         public static bool Enabled() => Run("/Query /TN " + TaskName) == 0;
 
@@ -57,7 +68,7 @@ namespace TT
             var user = Environment.UserDomainName + "\\" + Environment.UserName;
             var xml = "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n" +
                 "<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\n" +
-                "  <RegistrationInfo><Description>TrustTunnel VPN (Sabi)</Description></RegistrationInfo>\n" +
+                "  <RegistrationInfo><Description>SABI TUNNEL VPN</Description></RegistrationInfo>\n" +
                 "  <Triggers><LogonTrigger><Enabled>true</Enabled><UserId>" + SecurityElement.Escape(user) + "</UserId><Delay>PT10S</Delay></LogonTrigger></Triggers>\n" +
                 "  <Principals><Principal id=\"Author\"><UserId>" + SecurityElement.Escape(user) + "</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>\n" +
                 "  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>" +
@@ -65,7 +76,7 @@ namespace TT
                 "  <Actions Context=\"Author\"><Exec><Command>\"" + SecurityElement.Escape(Application.ExecutablePath) + "\"</Command><Arguments>--tray</Arguments>" +
                 "<WorkingDirectory>" + SecurityElement.Escape(Cfg.Dir.TrimEnd('\\')) + "</WorkingDirectory></Exec></Actions>\n" +
                 "</Task>\n";
-            var tmp = Path.Combine(Path.GetTempPath(), "trusttunnel_task.xml");
+            var tmp = Path.Combine(Path.GetTempPath(), "sabitunnel_task.xml");
             File.WriteAllText(tmp, xml, Encoding.Unicode);
             try { return Run("/Create /F /TN " + TaskName + " /XML \"" + tmp + "\"") == 0; }
             finally { try { File.Delete(tmp); } catch { } }

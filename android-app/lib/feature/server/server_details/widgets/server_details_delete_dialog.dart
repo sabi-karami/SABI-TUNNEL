@@ -9,21 +9,42 @@ class ServerDetailsDeleteDialog extends StatelessWidget {
   final String serverName;
   final VoidCallback onDeletePressed;
 
+  /// One of the panel's default servers: deleting it lasts only until the next sync.
+  final bool isDefault;
+
   const ServerDetailsDeleteDialog({
     super.key,
     required this.serverName,
     required this.onDeletePressed,
+    this.isDefault = false,
   });
 
   @override
   Widget build(BuildContext context) => CustomAlertDialog(
     title: context.ln.deleteServerDialogTitle,
     scrollable: true,
-    content: ArbParser(
-      data: context.ln.deleteServerDescription(
-        serverName,
-      ),
-    ),
+    content: isDefault
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ArbParser(
+                data: context.ln.deleteServerDescription(
+                  serverName,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                context.ln.deleteDefaultServerNote,
+                style: context.textTheme.bodySmall,
+              ),
+            ],
+          )
+        : ArbParser(
+            data: context.ln.deleteServerDescription(
+              serverName,
+            ),
+          ),
     actionsBuilder: (spacing) => [
       TextButton(
         onPressed: context.pop,

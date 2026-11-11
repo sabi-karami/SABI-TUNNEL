@@ -104,7 +104,7 @@ namespace TT
         MsgBox(string text, char kind, bool ask, float textH, float h) : base("", 420, h)
         {
             message = text; this.kind = kind; this.textH = textH;
-            Text = "TrustTunnel";
+            Text = "SABI TUNNEL · پیام";
             Color c = kind == 'e' ? Theme.Danger : kind == '?' ? Theme.Wait1 : kind == 'v' ? Theme.On1 : Theme.Off1;
             Page.Over = g =>
             {

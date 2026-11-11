@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release:
-        description: 'Publish the build as GitHub release v3.0.2 (setup, zip, SHA256SUMS)'
+        description: 'Publish (or refresh) GitHub release v<APP_VERSION> with setup, zip, SHA256SUMS'
         type: boolean
         default: false
   push:
@@ -13,7 +13,7 @@ on:
 
 env:
   CLIENT_VERSION: '1.1.11'
-  APP_VERSION: '3.0.2'
+  APP_VERSION: '3.1.0'
 
 concurrency:
   group: windows-app-${{ github.ref }}
@@ -34,26 +34,27 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build GUI (.NET Framework 4.8, no runtime needed on Windows 10/11)
-        run: dotnet build windows-gui/TrustTunnelGUI.csproj -c Release -o build
+        # the run number is the build number the installed apps compare with the panel feed to update themselves
+        run: dotnet build windows-gui/SabiTunnel.csproj -c Release -o build -p:SabiBuild=${{ github.run_number }}
 
       - name: Assemble package
         shell: pwsh
         run: |
           $v = $env:CLIENT_VERSION
           Invoke-WebRequest "https://github.com/TrustTunnel/TrustTunnelClient/releases/download/v$v/trusttunnel_client-v$v-windows-x86_64.zip" -OutFile client.zip
-          New-Item -ItemType Directory pkg/TrustTunnel -Force | Out-Null
-          Expand-Archive client.zip -DestinationPath pkg/TrustTunnel -Force
-          Copy-Item build/TrustTunnel.exe, build/TrustTunnel.exe.config pkg/TrustTunnel/
-          Copy-Item windows-gui/package/* pkg/TrustTunnel/
-          Copy-Item windows-gui/fonts/OFL.txt pkg/TrustTunnel/OFL-Vazirmatn.txt
-          Get-ChildItem pkg/TrustTunnel | Format-Table Name, Length
+          New-Item -ItemType Directory pkg/SabiTunnel -Force | Out-Null
+          Expand-Archive client.zip -DestinationPath pkg/SabiTunnel -Force
+          Copy-Item build/SabiTunnel.exe, build/SabiTunnel.exe.config pkg/SabiTunnel/
+          Copy-Item windows-gui/package/* pkg/SabiTunnel/
+          Copy-Item windows-gui/fonts/OFL.txt pkg/SabiTunnel/OFL-Vazirmatn.txt
+          Get-ChildItem pkg/SabiTunnel | Format-Table Name, Length
 
       - name: Build installer (Inno Setup 6)
         shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
-          & $iscc /Qp "/DPkgDir=$env:GITHUB_WORKSPACE\pkg\TrustTunnel" /DAppVer=$env:APP_VERSION "/O$env:GITHUB_WORKSPACE\setup" windows-gui\installer.iss
+          & $iscc /Qp "/DPkgDir=$env:GITHUB_WORKSPACE\pkg\SabiTunnel" /DAppVer=$env:APP_VERSION "/O$env:GITHUB_WORKSPACE\setup" windows-gui\installer.iss
           if ($LASTEXITCODE -ne 0) { exit 1 }
           Get-ChildItem setup | Format-Table Name, Length
 
@@ -65,7 +66,7 @@ jobs:
           & "$env:ProgramFiles\Windows Defender\MpCmdRun.exe" -SignatureUpdate | Out-Null
           $sig = (Get-MpComputerStatus).AntivirusSignatureVersion
           $bad = 0; $lines = @("signatures=$sig")
-          $files = @("$env:GITHUB_WORKSPACE\setup\TrustTunnel-Setup.exe") + (Get-ChildItem pkg\TrustTunnel -Include *.exe, *.dll -Recurse | ForEach-Object FullName)
+          $files = @("$env:GITHUB_WORKSPACE\setup\SabiTunnel-Setup.exe") + (Get-ChildItem pkg\SabiTunnel -Include *.exe, *.dll -Recurse | ForEach-Object FullName)
           foreach ($f in $files) {
             $r = & "$env:ProgramFiles\Windows Defender\MpCmdRun.exe" -Scan -ScanType 3 -File $f -DisableRemediation 2>&1 | Out-String
             $code = $LASTEXITCODE
@@ -74,7 +75,7 @@ jobs:
             $lines += ("defender_{0}={1}" -f (Split-Path $f -Leaf), $(if ($code -eq 0) { 'clean' } else { "DETECTED $threat" }))
           }
           $lines | Set-Content "$out\defender.txt"; $lines | Write-Host
-          Copy-Item build\TrustTunnel.exe, build\TrustTunnel.exe.config, setup\TrustTunnel-Setup.exe "$out\bin\"
+          Copy-Item build\SabiTunnel.exe, build\SabiTunnel.exe.config, setup\SabiTunnel-Setup.exe "$out\bin\"
           if ($bad -gt 0) { exit 1 }
 
       - name: Render UI previews (offline, every build)
@@ -82,7 +83,7 @@ jobs:
         shell: pwsh
         run: |
           $d = "$env:GITHUB_WORKSPACE\shots\ui"
-          $p = Start-Process "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe" -ArgumentList "--shots=$d" -PassThru -Wait
+          $p = Start-Process "$env:GITHUB_WORKSPACE\build\SabiTunnel.exe" -ArgumentList "--shots=$d" -PassThru -Wait
           Write-Host "exit: $($p.ExitCode)"
           if (Test-Path "$env:GITHUB_WORKSPACE\build\trusttunnel_gui_error.log") { Get-Content "$env:GITHUB_WORKSPACE\build\trusttunnel_gui_error.log" }
           Get-ChildItem $d -ErrorAction SilentlyContinue | Format-Table Name, Length
@@ -92,13 +93,31 @@ jobs:
         shell: pwsh
         run: |
           $t = Join-Path $env:RUNNER_TEMP 'tt-selftest'
-          Copy-Item pkg\TrustTunnel $t -Recurse -Force
+          Copy-Item pkg\SabiTunnel $t -Recurse -Force
           $out = "$env:GITHUB_WORKSPACE\shots\selftest.txt"
-          $p = Start-Process "$t\TrustTunnel.exe" -ArgumentList "--selftest=$out" -PassThru -Wait
+          $p = Start-Process "$t\SabiTunnel.exe" -ArgumentList "--selftest=$out" -PassThru -Wait
           if (Test-Path $out) { Get-Content $out -Encoding utf8 } else { Write-Host 'no selftest output' }
           if (Test-Path "$t\trusttunnel_gui_error.log") { Get-Content "$t\trusttunnel_gui_error.log" }
           Write-Host "exit: $($p.ExitCode)"
           if ($p.ExitCode -ne 0) { exit 1 }
+
+      - name: Files for the panel and the release (setup + portable zip)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist -Force | Out-Null
+          Copy-Item setup/SabiTunnel-Setup.exe dist/
+          # the zip holds the SabiTunnel folder; portable copies swap their files in from it when they update
+          Compress-Archive -Path pkg/SabiTunnel -DestinationPath dist/SabiTunnel-Windows.zip -Force
+          Set-Location dist
+          $sums = foreach ($f in 'SabiTunnel-Setup.exe', 'SabiTunnel-Windows.zip') { '{0}  {1}' -f (Get-FileHash $f -Algorithm SHA256).Hash.ToLower(), $f }
+          $sums | Set-Content -Encoding ascii SHA256SUMS.txt; $sums | Write-Host
+
+      - name: Keep the files for the deploy job
+        uses: actions/upload-artifact@v4
+        with:
+          name: SabiTunnel-Windows-dist
+          path: dist/
+          retention-days: 7
 
       - name: Live UI test against the real server
         if: env.TT_TEST_LINK != ''
@@ -143,16 +162,16 @@ jobs:
             Write-Host "shot: $name"
           }
           function Ip { $r = & curl.exe -s --max-time 12 -H 'Connection: close' https://api.ipify.org; if ($r) { $r.Trim() } else { 'error' } }
-          function Gui { Get-Process TrustTunnel -ErrorAction SilentlyContinue | Select-Object -First 1 }
+          function Gui { Get-Process SabiTunnel -ErrorAction SilentlyContinue | Select-Object -First 1 }
           function Client { [bool](Get-Process trusttunnel_client -ErrorAction SilentlyContinue) }
-          function GuiCmd($c) { Start-Process .\TrustTunnel.exe -ArgumentList "--$c"; Start-Sleep -Milliseconds 2200 }
+          function GuiCmd($c) { Start-Process .\SabiTunnel.exe -ArgumentList "--$c"; Start-Sleep -Milliseconds 2200 }
           function Wins {
             $p = Gui; if (-not $p) { return @() }
             @([M]::List($p.Id) | ForEach-Object { $a = $_.Split('|'); [pscustomobject]@{ H = [IntPtr][long]$a[0]; Name = $a[1]; X = [int]$a[2]; Y = [int]$a[3]; W = [int]$a[4]; Hh = [int]$a[5] } } | Where-Object { $_.Name -ne '' -and $_.W -gt 60 })
           }
-          function MainWin { Wins | Where-Object { $_.Name -like 'TrustTunnel*Sabi*' } | Select-Object -First 1 }
+          function MainWin { Wins | Where-Object { $_.Name -eq 'SABI TUNNEL' } | Select-Object -First 1 }
           function CloseDialogs {
-            foreach ($w in Wins) { if ($w.Name -notlike 'TrustTunnel*Sabi*') { Write-Host "closing window '$($w.Name)'"; [void][M]::PostMessage($w.H, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) } }
+            foreach ($w in Wins) { if ($w.Name -ne 'SABI TUNNEL') { Write-Host "closing window '$($w.Name)'"; [void][M]::PostMessage($w.H, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) } }
             Start-Sleep 1
           }
           function ClickMain($lx, $ly, $label) {
@@ -176,7 +195,7 @@ jobs:
             Write-Host "clicked $label at $x,$y in '$($w.Name)'"
             Start-Sleep -Milliseconds 200; [void][M]::SetCursorPos(1000, 700)
           }
-          function Dlg { Wins | Where-Object { $_.Name -notlike 'TrustTunnel*Sabi*' } | Select-Object -First 1 }
+          function Dlg { Wins | Where-Object { $_.Name -ne 'SABI TUNNEL' } | Select-Object -First 1 }
           function Enter { $d = Dlg; if ($d) { [void][M]::SetForegroundWindow($d.H); Start-Sleep -Milliseconds 400; [System.Windows.Forms.SendKeys]::SendWait('{ENTER}'); Write-Host "ENTER on '$($d.Name)'" } }
           function TomlUser { $m = Select-String -Path trusttunnel_client.toml -Pattern '^username = "(.*)"' -ErrorAction SilentlyContinue; if ($m) { $m.Matches[0].Groups[1].Value } else { '' } }
           function Servers { @(Get-ChildItem servers -Filter *.toml -ErrorAction SilentlyContinue).Count }
@@ -190,30 +209,30 @@ jobs:
             $R.share_page_shot = Test-Path "$shots\30-share-page.png"
           }
           # ---------- install with the real Setup.exe, then test from Program Files
-          $p = Start-Process "$env:GITHUB_WORKSPACE\setup\TrustTunnel-Setup.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/TASKS=desktopicon',"/LOG=$shots\setup.log" -Wait -PassThru
-          $app = "$env:ProgramFiles\TrustTunnel"
+          $p = Start-Process "$env:GITHUB_WORKSPACE\setup\SabiTunnel-Setup.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/TASKS=desktopicon',"/LOG=$shots\setup.log" -Wait -PassThru
+          $app = "$env:ProgramFiles\SabiTunnel"
           $R.setup_exit = $p.ExitCode
-          $R.installed = Test-Path "$app\TrustTunnel.exe"
-          $R.start_menu = Test-Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\TrustTunnel\TrustTunnel.lnk"
-          $R.desktop_icon = Test-Path "$env:PUBLIC\Desktop\TrustTunnel.lnk"
+          $R.installed = Test-Path "$app\SabiTunnel.exe"
+          $R.start_menu = Test-Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\SABI TUNNEL\SABI TUNNEL.lnk"
+          $R.desktop_icon = Test-Path "$env:PUBLIC\Desktop\SABI TUNNEL.lnk"
           $R.proto_hklm = [string](Get-ItemProperty 'HKLM:\Software\Classes\tt\shell\open\command' -ErrorAction SilentlyContinue).'(default)'
           Set-Location $app
           $R.before = Ip; Write-Host "IP before: $($R.before)"
 
           # ---------- A: first run, no settings -> import dialog
-          Start-Process .\TrustTunnel.exe; Start-Sleep 7
+          Start-Process .\SabiTunnel.exe; Start-Sleep 7
           Windows 'first run'; Shot '01-first-run-import'
           CloseDialogs; Start-Sleep 1; Shot '02-no-config'
           GuiCmd 'quit'; Start-Sleep 3
           $R.quit_first_run = -not (Gui)
-          Get-Process TrustTunnel -ErrorAction SilentlyContinue | Stop-Process -Force
+          Get-Process SabiTunnel -ErrorAction SilentlyContinue | Stop-Process -Force
 
           # ---------- B: configured, idle
           .\setup_wizard.exe --mode non-interactive --deeplink $env:TT_TEST_LINK --settings trusttunnel_client.toml | Out-Null
           $t = [IO.File]::ReadAllText("$PWD\trusttunnel_client.toml") -replace '(?m)^killswitch_enabled = .*', 'killswitch_enabled = false'
           [IO.File]::WriteAllText("$PWD\trusttunnel_client.toml", $t)
           [IO.File]::WriteAllText("$PWD\gui.ini", "autoconnect=0`r`nname=Sabi VPN`r`n")
-          Start-Process .\TrustTunnel.exe; Start-Sleep 6
+          Start-Process .\SabiTunnel.exe; Start-Sleep 6
           Windows 'idle'; Shot '03-off'
           GuiCmd 'settings'; Start-Sleep 1; Shot '04-settings'
           GuiCmd 'bypass'; Start-Sleep 1; Windows 'bypass'; Shot '05-bypass'; CloseDialogs
@@ -268,7 +287,7 @@ jobs:
           Shot '15-after-quit'
 
           # ---------- F: add a 2nd server by opening a tt:// link (protocol handler -> running app), switch, delete
-          Start-Process .\TrustTunnel.exe; Start-Sleep 6
+          Start-Process .\SabiTunnel.exe; Start-Sleep 6
           $R.migrated_servers = Servers
           $R.proto_hkcu = [string](Get-ItemProperty 'HKCU:\Software\Classes\tt\shell\open\command' -ErrorAction SilentlyContinue).'(default)'
           if ($env:TT_TEST_LINK2) {
@@ -320,34 +339,35 @@ jobs:
           $R.uninst_gui = [bool](Gui); $R.uninst_client = Client
           $R.uninst_dir_left = Test-Path $app
           $R.uninst_proto_left = Test-Path 'HKLM:\Software\Classes\tt'
-          $R.uninst_task_left = [bool](schtasks /Query /TN TrustTunnelGUI 2>$null)
+          $R.uninst_task_left = [bool](schtasks /Query /TN SabiTunnel 2>$null)
           $R.ip_after_uninstall = Ip
           Write-Host '--- routes ---'; route print -4 | Select-Object -First 30 | Out-String | Write-Host
           ($R.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join "`n" | Set-Content "$shots\result.txt"
           Get-Content "$shots\result.txt" | Write-Host
-          Get-Process TrustTunnel, trusttunnel_client -ErrorAction SilentlyContinue | Stop-Process -Force
+          Get-Process SabiTunnel, trusttunnel_client -ErrorAction SilentlyContinue | Stop-Process -Force
           New-Item -ItemType Directory "$shots\bin" -Force | Out-Null
-          Copy-Item "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe", "$env:GITHUB_WORKSPACE\build\TrustTunnel.exe.config", "$env:GITHUB_WORKSPACE\setup\TrustTunnel-Setup.exe" "$shots\bin\"
+          Copy-Item "$env:GITHUB_WORKSPACE\build\SabiTunnel.exe", "$env:GITHUB_WORKSPACE\build\SabiTunnel.exe.config", "$env:GITHUB_WORKSPACE\setup\SabiTunnel-Setup.exe" "$shots\bin\"
 
-      - name: Publish GitHub release
-        if: ${{ inputs.release }}
+      - name: Publish GitHub release (created automatically when the version is new)
+        if: github.ref == 'refs/heads/main' && (inputs.release || github.event_name == 'push')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.release }}
         run: |
           $v = $env:APP_VERSION; $tag = "v$v"
-          Compress-Archive -Path pkg/TrustTunnel -DestinationPath TrustTunnel-Windows-GUI.zip -Force
-          Copy-Item setup/TrustTunnel-Setup.exe .
-          $sums = foreach ($f in 'TrustTunnel-Setup.exe', 'TrustTunnel-Windows-GUI.zip') { '{0}  {1}' -f (Get-FileHash $f -Algorithm SHA256).Hash.ToLower(), $f }
-          $sums | Set-Content -Encoding ascii SHA256SUMS.txt; $sums | Write-Host
+          Set-Location dist
           gh release view $tag --json tagName 2>$null | Out-Null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title "TrustTunnel for Windows $v · شب فیروزه" --notes-file windows-gui/RELEASE_NOTES.md --target $env:GITHUB_SHA --latest
+            gh release create $tag --title "SABI TUNNEL for Windows $v" --notes-file ../windows-gui/RELEASE_NOTES.md --target $env:GITHUB_SHA --latest
+          } elseif ($env:FORCE -eq 'true') {
+            gh release edit $tag --title "SABI TUNNEL for Windows $v" --notes-file ../windows-gui/RELEASE_NOTES.md
           } else {
-            gh release edit $tag --title "TrustTunnel for Windows $v · شب فیروزه" --notes-file windows-gui/RELEASE_NOTES.md
+            Write-Host "release $tag already exists (run the workflow with 'release' to refresh its files); the apps update from the panel"
+            exit 0
           }
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          gh release upload $tag TrustTunnel-Setup.exe TrustTunnel-Windows-GUI.zip SHA256SUMS.txt --clobber
+          gh release upload $tag SabiTunnel-Setup.exe SabiTunnel-Windows.zip SHA256SUMS.txt --clobber
           if ($LASTEXITCODE -ne 0) { exit 1 }
           gh release view $tag --json url,assets --jq '.url, (.assets[] | "\(.name) \(.size)")'
 
@@ -366,7 +386,66 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: TrustTunnel-Windows
+          name: SabiTunnel-Windows
           path: |
             pkg/
             setup/
+
+  deploy:
+    name: Publish to the panel (installed apps update themselves)
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: sabi-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SabiTunnel-Windows-dist
+          path: dist
+
+      - name: Send the build to the server
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          BUILD: ${{ github.run_number }}
+          NOTES: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_SSH_KEY" ] || [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_KNOWN_HOSTS" ]; then
+            echo "::warning::DEPLOY_SSH_KEY / DEPLOY_HOST / DEPLOY_KNOWN_HOSTS are not set: the build was not published"; exit 0
+          fi
+          mkdir -p bundle/apps
+          cp dist/SabiTunnel-Setup.exe dist/SabiTunnel-Windows.zip bundle/apps/
+          python3 - <<'PY'
+          import hashlib, json, os
+          d = "bundle/apps"
+          def f(name):
+              p = os.path.join(d, name)
+              h = hashlib.sha256()
+              with open(p, "rb") as fh:
+                  for b in iter(lambda: fh.read(1 << 20), b""):
+                      h.update(b)
+              return {"name": name, "sha256": h.hexdigest(), "size": os.path.getsize(p)}
+          notes = [l.strip() for l in (os.environ.get("NOTES") or "").splitlines() if l.strip()]
+          part = {"windows": {"version": os.environ["APP_VERSION"], "build": int(os.environ["BUILD"]),
+                              "notes": notes[0][:300] if notes else "", "commit": os.environ["GITHUB_SHA"][:12],
+                              "files": {"setup": f("SabiTunnel-Setup.exe"), "zip": f("SabiTunnel-Windows.zip")}}}
+          with open(os.path.join(d, "manifest-part.json"), "w", encoding="utf-8") as fh:
+              json.dump(part, fh, ensure_ascii=False, indent=1)
+          print(json.dumps(part, ensure_ascii=False, indent=1))
+          PY
+          tar -C bundle -czf bundle.tgz apps
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/sabi_deploy && chmod 600 ~/.ssh/sabi_deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/sabi_known_hosts
+          for i in 1 2 3; do
+            if ssh -i ~/.ssh/sabi_deploy -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+                 -o UserKnownHostsFile="$HOME/.ssh/sabi_known_hosts" -o ConnectTimeout=20 -o ServerAliveInterval=15 \
+                 "sabi-ci@$DEPLOY_HOST" < bundle.tgz; then exit 0; fi
+            echo "attempt $i failed"; sleep $((i * 15))
+          done
+          exit 1

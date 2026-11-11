@@ -13,10 +13,10 @@ namespace TT
         const float RowH = 60, ListTop = 74;
         public const int MaxRows = 8;
 
-        public ServersDialog(List<Profile> list, string activeId, bool canSwitch)
+        public ServersDialog(List<Profile> list, string activeId, bool canSwitch, HashSet<string> managed = null)
             : base("سرورها", 440, DialogHeight(list.Count))
         {
-            Text = "TrustTunnel · سرورها";
+            Text = "SABI TUNNEL · سرورها";
             int n = Math.Min(list.Count, MaxRows);
             string hint = list.Count == 0 ? "هنوز سروری ذخیره نشده است."
                         : canSwitch ? "روی هر سرور بزنید تا به آن وصل شوید." : "در حال قطع اتصال… چند لحظه صبر کنید.";
@@ -24,12 +24,12 @@ namespace TT
             for (int i = 0; i < n; i++)
             {
                 var p = list[i];
-                bool active = p.Id == activeId;
+                bool active = p.Id == activeId, def = managed != null && managed.Contains(p.Id);
                 var row = new RectangleF(24, ListTop + i * RowH, LW - 48, RowH - 8);
                 Page.Add(new Custom
                 {
                     B = row, Clickable = canSwitch, GlowPad = 2,
-                    Draw = (g, w) => PaintRow(g, w, p, active),
+                    Draw = (g, w) => PaintRow(g, w, p, active, def),
                     Click = () => Done("select", p.Id)
                 });
                 Page.Add(new IconButton
@@ -52,7 +52,7 @@ namespace TT
 
         void Done(string action, string id) { Action = action; Id = id; DialogResult = DialogResult.OK; Close(); }
 
-        static void PaintRow(Graphics g, Custom w, Profile p, bool active)
+        static void PaintRow(Graphics g, Custom w, Profile p, bool active, bool def)
         {
             var r = w.B;
             Gfx.FillRound(g, r, 14, Color.FromArgb(10 + (int)(14 * w.HoverT), 255, 255, 255));
@@ -63,7 +63,9 @@ namespace TT
             var tx = new RectangleF(r.X + 52, r.Y, r.Width - 52 - 34, 0);
             Gfx.Text(g, p.Name, FontKit.Px(14, 700), Theme.Text, new RectangleF(tx.X, r.Y + 6, tx.Width, 22));
             var sub = (string.IsNullOrEmpty(p.Host) ? "—" : p.Host) + (string.IsNullOrEmpty(p.User) ? "" : "  ·  " + p.User);
-            Gfx.Text(g, sub, FontKit.Px(11.5f), Theme.Muted, new RectangleF(tx.X, r.Y + 28, tx.Width, 18), Al.Right, false);
+            float bw = def ? 56 : 0;   // "default" badge: the server comes from the panel and follows it
+            Gfx.Text(g, sub, FontKit.Px(11.5f), Theme.Muted, new RectangleF(tx.X + bw, r.Y + 28, tx.Width - bw, 18), Al.Right, false);
+            if (def) Gfx.Text(g, "پیش‌فرض", FontKit.Px(10.5f, 700), Theme.Gold, new RectangleF(tx.X, r.Y + 28, bw, 18), Al.Left);
             if (active)
                 Gfx.Text(g, "فعلی", FontKit.Px(11f, 700), Theme.On1, new RectangleF(tx.X, r.Y + 6, 60, 22), Al.Left);
         }

@@ -17,9 +17,15 @@ namespace TT
             if (selftest != null) { Environment.ExitCode = SelfTest.Run(selftest.Substring(11)); return; }
             var link = args.FirstOrDefault(Proto.IsLink);          // tt://… opened from a browser / QR / chat
             var cmds = args.Where(a => !Proto.IsLink(a)).Select(a => a.TrimStart('-', '/').ToLowerInvariant()).ToArray();
+            if (cmds.Contains("migrate")) { AutoStart.Migrate(); return; }   // from Setup: move the sign-in task of 3.0.x over
             if (link != null) Proto.Stash(link);
             using (var mutex = new Mutex(true, "TrustTunnelGUI_SabiVPN_Mutex", out bool first))
             {
+                if (!first && cmds.Contains("updated"))
+                {
+                    // started by the updater while the old copy is still closing: wait for it instead of handing over
+                    try { first = mutex.WaitOne(30000); } catch (AbandonedMutexException) { first = true; }
+                }
                 if (!first)
                 {
                     var cmd = link != null ? "addlink" : cmds.FirstOrDefault(c => Array.IndexOf(MainForm.Cmds, c) >= 0) ?? "show";
@@ -35,11 +41,11 @@ namespace TT
                 AppDomain.CurrentDomain.UnhandledException += (s, e) => Crash(e.ExceptionObject as Exception);
                 bool tray = cmds.Contains("tray");
                 MainForm form;
-                try { form = new MainForm(tray); }
+                try { form = new MainForm(tray, cmds); }
                 catch (Exception ex)
                 {
                     Crash(ex);
-                    MessageBox.Show("TrustTunnel could not start:\n\n" + ex.Message + "\n\nDetails: trusttunnel_gui_error.log", "TrustTunnel", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show("SABI TUNNEL could not start:\n\n" + ex.Message + "\n\nDetails: trusttunnel_gui_error.log", "SABI TUNNEL", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
                 var shots = args.FirstOrDefault(a => a.StartsWith("--shots=", StringComparison.OrdinalIgnoreCase));

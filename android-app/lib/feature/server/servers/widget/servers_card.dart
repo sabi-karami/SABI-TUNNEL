@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:trusttunnel/common/extensions/context_extensions.dart';
+import 'package:trusttunnel/common/localization/localization.dart';
 import 'package:trusttunnel/common/logging/enum/logging_level.dart';
 import 'package:trusttunnel/common/logging/enum/logging_security_type.dart';
 import 'package:trusttunnel/data/model/server.dart';
@@ -13,6 +14,7 @@ import 'package:trusttunnel/feature/server/servers/widget/servers_card_connectio
 import 'package:trusttunnel/feature/settings/app_logging/widgets/scope/app_logging_scope.dart';
 import 'package:trusttunnel/feature/settings/excluded_routes/widgets/scope/excluded_routes_scope.dart';
 import 'package:trusttunnel/feature/vpn/widgets/vpn_scope.dart';
+import 'package:trusttunnel/sabi/sabi_sync.dart';
 import 'package:trusttunnel/widgets/common/custom_list_tile_separated.dart';
 
 class ServersCard extends StatefulWidget {
@@ -48,7 +50,9 @@ class _ServersCardState extends State<ServersCard> {
     return CustomListTileSeparated(
       title: widget.server.serverData.name,
       titleStyle: context.textTheme.titleSmall,
-      subtitle: widget.server.serverData.ipAddress,
+      subtitle: SabiSync.isDefault(widget.server.id)
+          ? '${context.ln.defaultServerBadge} · ${widget.server.serverData.ipAddress}'
+          : widget.server.serverData.ipAddress,
       onTileTap: () => _pushServerDetailsScreen(
         context,
         server: widget.server,

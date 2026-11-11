@@ -12,6 +12,7 @@ import 'package:trusttunnel/feature/vpn/widgets/vpn_scope.dart';
 import 'package:trusttunnel/widgets/buttons/custom_icon_button.dart';
 import 'package:trusttunnel/widgets/common/scaffold_messenger_provider.dart';
 import 'package:trusttunnel/widgets/custom_app_bar.dart';
+import 'package:trusttunnel/sabi/sabi_sync.dart';
 
 class ServerDetailsFullScreenView extends StatefulWidget {
   final Widget body;
@@ -131,6 +132,7 @@ class _ServerDetailsFullScreenViewState extends State<ServerDetailsFullScreenVie
         value: parentScaffoldMessenger ?? ScaffoldMessenger.of(innerContext),
         child: ServerDetailsDeleteDialog(
           serverName: _data.name,
+          isDefault: SabiSync.isDefault(ServerDetailsScope.controllerOf(context, listen: false).id),
           onDeletePressed: () => ServerDetailsScope.controllerOf(context, listen: false).delete(_onDeleted),
         ),
       ),

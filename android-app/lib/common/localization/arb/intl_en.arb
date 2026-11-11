@@ -71,6 +71,8 @@
   "typeSomething": "Type something",
   "deleteServer": "Delete server",
   "deleteServerDialogTitle": "Delete server?",
+  "deleteDefaultServerNote": "This is a default server from the panel: if you delete it, it comes back with the next update.",
+  "defaultServerBadge": "Default",
   "deleteServerDescription": "Server <b>{serverName}</b> will be deleted",
   "@deleteServerDescription": {
     "placeholders": {
@@ -158,7 +160,7 @@
   "exportingLogs": "Exporting logs…",
   "connectionLogEmptyTitle": "No connections yet",
   "connectionLogEmptyDescription": "Connection log shows where your traffic goes and how it’s routed. Connect to your server and open a website to add the first record",
-  "exitDialogTitle": "Quit TrustTunnel?",
+  "exitDialogTitle": "Quit SABI TUNNEL?",
   "exitDialogDescription": "This will disconnect you from the active server",
   "quit": "Quit",
   "dontQuit": "Don’t quit",
@@ -201,7 +203,7 @@
   "heroTapToConnect": "Tap the portal to connect",
   "heroTapToDisconnect": "Tap again to disconnect",
   "heroNoServerTitle": "No server yet",
-  "heroNoServerDescription": "Add your TrustTunnel server or open a tt:// link from your share page",
+  "heroNoServerDescription": "Add your server or open a tt:// link from your share page",
   "heroYou": "You",
   "heroUptime": "Uptime",
   "heroEncrypted": "Encrypted",

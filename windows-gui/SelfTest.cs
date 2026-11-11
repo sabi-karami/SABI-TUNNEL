@@ -7,7 +7,7 @@ using System.Text;
 
 namespace TT
 {
-    /// <summary>TrustTunnel.exe --selftest=out.txt (used by CI): link clean-up, the deep-link pre-check, host-name
+    /// <summary>SabiTunnel.exe --selftest=out.txt (used by CI): link clean-up, the deep-link pre-check, host-name
     /// resolution (Windows DNS and DNS-over-HTTPS), the wizard import of a relay-style link, map labels and the
     /// connection probe used when the client gives up. Writes one line per check; exit code 0 = all passed,
     /// 3 = something failed.</summary>
@@ -21,6 +21,77 @@ namespace TT
                 log.Add((ok ? "ok    " : "FAIL  ") + name + (string.IsNullOrEmpty(detail) ? "" : "  | " + detail));
                 if (!ok) bad++;
             }
+
+            // default servers from the panel feed, against the real wizard in this scratch copy: parse, add, adopt the
+            // user's own twin (keeping HTTP/3), wait while connected, come back after a delete, removal
+            void FeedChecks()
+            {
+                void Sub(string s) => log.Add("        " + s);
+                string La(string pass) => Link(1, "a.example.net", "user-a", pass, "A");
+                string Lb = Link(1, "b.example.net", "user-b", "pw-b1", "B");
+                string C(string id, string link, string hash) =>
+                    "{\"id\":\"" + id + "\",\"name\":\"SABI TUNNEL · " + id + "\",\"link\":\"" + link + "\",\"hash\":\"" + hash + "\"}";
+                Feed.Result Sync(bool busy, params string[] items)
+                {
+                    var data = Feed.Parse("{\"v\":1,\"rev\":\"t\",\"configs\":[" + string.Join(",", items) + "]}", "https://mirror.example.net/app/v1/feed", out var why);
+                    if (data == null) throw new Exception("feed parse: " + why);
+                    return Feed.Apply(Feed.Prepare(data, Sub), busy, Sub);
+                }
+
+                var pd = Feed.Parse("{\"v\":1,\"configs\":[" + C("x", "\u200F" + La("p"), "") + ",{\"id\":\"bad\",\"link\":\"https://example.net\"}]," +
+                    "\"apps\":{\"windows\":{\"version\":\"9.9.9\",\"build\":123456,\"files\":{\"setup\":{\"name\":\"S.exe\",\"url\":\"/app/dl/S.exe\",\"sha256\":\"" +
+                    new string('a', 64) + "\",\"size\":10}}}},\"feeds\":[\"https://f.example.net/app/v1/feed\",\"http://plain.example.net/feed\"]}",
+                    "https://m.example.net/app/v1/feed", out var pwhy);
+                Ok("feed: parse (marks cleaned, bad link skipped, https feeds only, windows build)",
+                   pd != null && pd.Configs.Count == 1 && pd.Configs[0].Link == La("p") && pd.Configs[0].Hash.Length == 16 && pd.Feeds.Count == 1 &&
+                   pd.Windows != null && pd.Windows.Build == 123456 && pd.Windows.Files.ContainsKey("setup"), pwhy);
+                Ok("feed: other formats rejected", Feed.Parse("{\"v\":2,\"configs\":[]}", "x", out _) == null && Feed.Parse("<html>", "x", out _) == null);
+
+                try { Directory.Delete(Profiles.Dir, true); } catch { }
+                foreach (var f in new[] { Cfg.Toml, Path.Combine(Cfg.Dir, "gui.ini") }) { try { File.Delete(f); } catch { } }
+                var err = Cfg.ImportLink(Lb);
+                Ok("feed: setup, the user's own server B", err == null, err);
+                if (err != null) return;
+                var mine = Profiles.Add(Cfg.NewToml, "my B");
+                try { File.Delete(Cfg.NewToml); } catch { }
+                Profiles.Activate(mine);
+                Cfg.Set("upstream_protocol", "\"http3\"");
+
+                var r1 = Sync(false, C("u:a", La("pw-a1"), "a1"), C("u:b", Lb, "b1"));
+                var all = Profiles.List();
+                var man = Feed.Managed();
+                var pa = all.FirstOrDefault(p => p.Host == "a.example.net");
+                Ok("feed: a new default is added", r1.Added == 1 && pa != null && man.Contains(pa.Id) && pa.Name == "SABI TUNNEL · u:a", r1.Added + " added, " + all.Count + " servers");
+                Ok("feed: the user's server with the same host + user is adopted, not duplicated", r1.Updated == 1 && all.Count == 2 && man.Contains(mine.Id));
+                Ok("feed: the user's HTTP/3 choice is kept", Cfg.GetFrom(mine.Toml, "upstream_protocol") == "http3" && Cfg.Get("upstream_protocol") == "http3",
+                   Cfg.GetFrom(mine.Toml, "upstream_protocol") + " / " + Cfg.Get("upstream_protocol"));
+                if (pa == null) return;
+
+                Profiles.Activate(pa);
+                var r2 = Sync(true, C("u:a", La("pw-a2"), "a2"), C("u:b", Lb, "b1"));
+                Ok("feed: a change to the server in use waits while connected", r2.Deferred == 1 && File.ReadAllText(pa.Toml).Contains("pw-a1"), r2.Deferred + " deferred");
+                var r3 = Sync(false, C("u:a", La("pw-a2"), "a2"), C("u:b", Lb, "b1"));
+                Ok("feed: ... and is applied after the disconnect (live config too)", r3.Updated == 1 && File.ReadAllText(pa.Toml).Contains("pw-a2") && File.ReadAllText(Cfg.Toml).Contains("pw-a2"));
+
+                Profiles.Delete(pa);
+                var r4 = Sync(false, C("u:a", La("pw-a2"), "a2"), C("u:b", Lb, "b1"));
+                Ok("feed: a deleted default comes back on the next sync", r4.Added == 1 && File.Exists(pa.Toml));
+
+                Profiles.Activate(Profiles.List().First(p => p.Id == pa.Id), sync: false);
+                var r5 = Sync(false);
+                var left = Profiles.List();
+                Ok("feed: removed in the panel, removed here; the adopted one stays as the user's", r5.Removed == 1 && left.Count == 1 && left[0].Id == mine.Id && Feed.Managed().Count == 0,
+                   r5.Removed + " removed, " + left.Count + " left");
+                Ok("feed: the removed server was in use, another one becomes active", Profiles.ActiveId == mine.Id && Cfg.Exists);
+                try { Directory.Delete(Profiles.Dir, true); } catch { }
+                foreach (var f in new[] { Cfg.Toml, Cfg.NewToml, Path.Combine(Cfg.Dir, "gui.ini") }) { try { File.Delete(f); } catch { } }
+
+                Ok("update: build number stamped by CI", Updater.Build > 0, Updater.Build.ToString());
+                var live = Feed.Fetch(10000, Sub);
+                log.Add((live != null ? "ok    " : "warn  ") + "live feed  | " +
+                        (live != null ? live.Configs.Count + " default servers, windows build " + (live.Windows?.Build ?? 0) : "not reachable from here"));
+            }
+
             try
             {
                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
@@ -126,6 +197,7 @@ namespace TT
                     Ok("set adds a missing key at the top", Cfg.Get("tt_selftest_key") == "1" && File.ReadAllText(Cfg.Toml).StartsWith("tt_selftest_key = 1"));
                     foreach (var f in new[] { Cfg.NewToml, Cfg.Toml, Cfg.RunToml }) { try { File.Delete(f); } catch { } }
                 }
+                FeedChecks();
             }
             catch (Exception ex) { Ok("no exception", false, ex.ToString()); }
             log.Add(bad == 0 ? "ALL PASSED" : bad + " FAILED");
@@ -135,17 +207,17 @@ namespace TT
 
         /// <summary>A deep link shaped like third-party relay links: host-name address, explicit protocol,
         /// DNS upstreams and an unusual tag order. Dummy credentials.</summary>
-        static string Link(int version)
+        static string Link(int version, string host = "vpn.example.top", string user = "user-test-123", string pass = "P4ss-synthetic-000", string name = "TestRelay")
         {
             var b = new List<byte>();
             void T(int tag, byte[] v) { b.Add((byte)tag); b.Add((byte)v.Length); b.AddRange(v); }
             byte[] S(string s) => Encoding.UTF8.GetBytes(s);
             T(0x00, new[] { (byte)version });
-            T(0x01, S("vpn.example.top"));
-            T(0x05, S("user-test-123"));
-            T(0x06, S("P4ss-synthetic-000"));
+            T(0x01, S(host));
+            T(0x05, S(user));
+            T(0x06, S(pass));
             T(0x02, S("relay-test.example.net:443"));
-            T(0x0C, S("TestRelay"));
+            T(0x0C, S(name));
             T(0x04, new byte[] { 0 });
             T(0x09, new byte[] { 1 });
             T(0x0D, new byte[] { 7 }.Concat(S("1.1.1.1")).Concat(new byte[] { 7 }).Concat(S("8.8.8.8")).ToArray());

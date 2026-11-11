@@ -1,5 +1,5 @@
 @echo off
-title TrustTunnel - Sabi VPN
+title SABI TUNNEL
 cd /d "%~dp0"
 set "TT_SELF=%~f0"
 

@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/icon-32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="/assets/icon-16.png">
 <link rel="apple-touch-icon" href="/assets/icon-180.png">
-<title>TrustTunnel · پنل مدیریت</title>
+<title>SABI TUNNEL · پنل مدیریت</title>
 <style>
 
 @font-face{font-family:Vazirmatn;src:url(/assets/vazirmatn-400.woff2) format("woff2");font-weight:400;font-display:swap}
@@ -113,6 +113,19 @@ button.danger:hover{background:rgba(255,92,122,.2)}
 button.sm{padding:5px 11px;font-size:13px}
 input,select{font:inherit;width:100%;background:rgba(3,4,11,.65);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px 13px;outline:none;transition:.2s}
 input:focus,select:focus{border-color:var(--turq);box-shadow:0 0 0 3px rgba(45,226,230,.15)}
+textarea{font:inherit;width:100%;background:rgba(3,4,11,.65);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px 13px;outline:none;resize:vertical;font-size:12px;word-break:break-all}
+textarea:focus{border-color:var(--turq);box-shadow:0 0 0 3px rgba(45,226,230,.15)}
+.flist{display:grid;gap:8px}
+.flist .it{display:flex;align-items:center;gap:12px;padding:9px 12px;background:rgba(3,4,11,.42);border:1px solid var(--line);border-radius:16px;min-width:0}
+.flist .it.dim{opacity:.55}
+.flist .t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.flist .t b{font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flist .t .note{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flist .kind{flex:none;font-size:11px;padding:3px 9px;border-radius:99px;border:1px solid rgba(45,226,230,.35);color:var(--turq);background:rgba(45,226,230,.07)}
+.flist .kind.link{border-color:rgba(245,199,107,.35);color:var(--gold);background:rgba(245,199,107,.07)}
+.appsv{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
+.appsv>div{background:rgba(3,4,11,.42);border:1px solid var(--line);border-radius:14px;padding:9px 13px;font-size:13px}
+.inapps{margin-top:5px;font-size:11px;color:var(--turq)}
 label{display:block;color:var(--mute);font-size:12.5px;margin:13px 0 6px}
 .wrap{max-width:1320px;margin:0 auto;padding:20px 20px 70px}
 .hide{display:none!important}
@@ -268,7 +281,7 @@ tr.u.off td{opacity:.72}
 <div id="login" class="hide">
   <div class="card fade">
     <svg class="logo"><use href="#logo"/></svg>
-    <h1 class="gtext">TrustTunnel</h1>
+    <h1 class="gtext">SABI TUNNEL</h1>
     <div class="tag">پنل فرماندهی سرور · ورود مدیر</div>
     <form id="lf">
       <label>نام کاربری</label><input id="lu" autocomplete="username" value="admin" class="mono">
@@ -282,7 +295,7 @@ tr.u.off td{opacity:.72}
 <div id="app" class="wrap hide">
   <header class="top fade">
     <svg class="logo"><use href="#logo"/></svg>
-    <div><h1 id="sname" class="gtext">TrustTunnel</h1><div class="sub mono" id="shost"></div></div>
+    <div><h1 id="sname" class="gtext">SABI TUNNEL</h1><div class="sub mono" id="shost"></div></div>
     <span id="spill" class="pill"><span class="dot"></span><span>آنلاین</span></span>
     <div class="sp"></div>
     <div class="clock"><b id="clk">--:--</b><span id="pdate"></span></div>
@@ -352,6 +365,14 @@ tr.u.off td{opacity:.72}
     </table>
   </section>
 
+  <section class="card fade" style="margin-top:16px;animation-delay:.34s">
+    <div class="orn">سرورهای پیش‌فرض برنامه‌ها<span class="sp"></span><small id="feedcount"></small><button class="pri sm" onclick="openAL()">+ لینک دلخواه</button></div>
+    <div class="note" style="margin:-4px 0 12px;line-height:1.9">این سرورها در برنامه‌های SABI TUNNEL (ویندوز و اندروید) خودکار در فهرست سرورها هستند. هر تغییری اینجا (افزودن، حذف، غیرفعال کردن یا رمز جدید) چند دقیقه بعد در همه‌ی برنامه‌ها هم اعمال می‌شود. کاربران فعال پنل خودشان اینجا هستند؛ با دکمه‌ی کنار هر کدام می‌توانید آن را از برنامه‌ها بیرون بگذارید.</div>
+    <div class="flist" id="flist"><div class="note">…</div></div>
+    <div class="orn" style="margin-top:18px">آخرین نسخه‌ی برنامه‌ها روی سرور<span class="sp"></span><small>برنامه‌ها خودشان به‌روز می‌شوند</small></div>
+    <div class="appsv" id="appsinfo"></div>
+  </section>
+
   <div class="g g-2">
     <section class="card fade"><div class="orn">اطلاعات سرور</div><div class="info" id="sinfo"></div></section>
     <section class="card fade top5"><div class="orn">پرمصرف‌ترین‌ها<span class="sp"></span><small>کل دوره</small></div><div id="top5"></div></section>
@@ -360,7 +381,7 @@ tr.u.off td{opacity:.72}
 
 <div class="modal-bg" id="m_link"><div class="modal card">
   <h3>لینک اتصال <span id="ml_name" class="mono gtext"></span></h3>
-  <div class="note">در اپ TrustTunnel: Add Server ← Import / Paste، یا QR را اسکن کنید. ساده‌تر: «صفحه‌ی اشتراک» را برای کاربر بفرستید.</div>
+  <div class="note">در برنامه‌ی SABI TUNNEL (یا هر برنامه‌ی TrustTunnel): «افزودن سرور» ← لینک، یا QR را اسکن کنید. ساده‌تر: «صفحه‌ی اشتراک» را برای کاربر بفرستید.</div>
   <label>پروتکل</label>
   <div class="seg" id="ml_proto"><button data-v="http2" class="on">HTTP/2<small>پایدارتر</small></button><button data-v="http3">HTTP/3<small>سریع‌تر · QUIC</small></button></div>
   <label>آدرس</label>
@@ -396,6 +417,7 @@ tr.u.off td{opacity:.72}
   <label class="check"><input type="checkbox" id="e_noexp"> حذف تاریخ انقضا (نامحدود)</label>
   <label class="check"><input type="checkbox" id="e_reset"> صفر کردن مصرف</label>
   <label class="check"><input type="checkbox" id="e_regen"> ساخت رمز جدید (لینک قبلی باطل می‌شود)</label>
+  <label class="check"><input type="checkbox" id="e_inapps"> سرور پیش‌فرض در برنامه‌های SABI TUNNEL باشد</label>
   <div class="foot"><button class="pri" onclick="saveEdit()">ذخیره</button><button class="ghost" onclick="closeM('m_edit')">انصراف</button></div>
 </div></div>
 
@@ -409,6 +431,14 @@ tr.u.off td{opacity:.72}
   <label>رمز فعلی</label><input id="p_old" type="password" class="mono">
   <label>رمز جدید (حداقل ۱۰ کاراکتر)</label><input id="p_new" type="password" class="mono">
   <div class="foot"><button class="pri" onclick="changePw()">تغییر رمز</button><button class="ghost" onclick="closeM('m_set')">بستن</button></div>
+</div></div>
+
+<div class="modal-bg" id="m_al"><div class="modal card">
+  <h3 id="al_t">لینک دلخواه برای برنامه‌ها</h3>
+  <div class="note">هر لینک tt:// (مثلاً سرور دیگری از خودتان) را اینجا بگذارید تا در همه‌ی برنامه‌های SABI TUNNEL سرور پیش‌فرض باشد. با حذف یا غیرفعال کردن، از برنامه‌ها هم برداشته می‌شود.</div>
+  <label>نام در برنامه‌ها</label><input id="al_name" placeholder="مثلاً سرور آلمان">
+  <label>لینک tt://</label><textarea id="al_link" class="mono" rows="4" dir="ltr" placeholder="tt://?..."></textarea>
+  <div class="foot"><button class="pri" onclick="saveAL()">ذخیره</button><button class="ghost" onclick="closeM('m_al')">انصراف</button></div>
 </div></div>
 
 <div class="toast" id="toast"></div>
@@ -518,14 +548,37 @@ $('#lf').onsubmit=async e=>{e.preventDefault();$('#le').textContent='';
 async function logout(){await api('/api/logout',{method:'POST'}).catch(()=>{});showLogin()}
 
 async function refresh(manual){
-  try{[ST,USERS]=await Promise.all([api('/api/status'),api('/api/users')]);lastRef=Date.now();renderStatus();renderUsers();if(manual===true)toast('به‌روز شد')}catch(e){}
+  try{[ST,USERS]=await Promise.all([api('/api/status'),api('/api/users')]);lastRef=Date.now();renderStatus();renderUsers();loadFeed();if(manual===true)toast('به‌روز شد')}catch(e){}
 }
+let FEED=null,ALID=null;
+async function loadFeed(){try{FEED=await api('/api/appfeed');renderFeed()}catch(e){}}
+function renderFeed(){
+  const f=FEED;if(!f)return;
+  $('#feedcount').textContent=fa(f.count)+' سرور در برنامه‌ها';
+  const rows=[];
+  f.users.forEach(u=>{const on=u.enabled&&u.in_apps,nj=esc(JSON.stringify(u.name));
+    rows.push(`<div class="it ${on?'':'dim'}"><span class="kind">کاربر پنل</span><div class="t"><b>${esc(u.label)}</b><span class="note">${!u.enabled?'کاربر غیرفعال است؛ تا وقتی فعال نشود در برنامه‌ها نیست':u.in_apps?'در همه‌ی برنامه‌ها هست':'از برنامه‌ها بیرون گذاشته شده'}</span></div>
+      <div class="acts"><button onclick='setInApps(${nj},${!u.in_apps})' title="${u.in_apps?'بیرون گذاشتن از برنامه‌ها':'افزودن به برنامه‌ها'}" aria-label="در برنامه‌ها" style="color:${u.in_apps?'var(--ok)':'var(--mute)'}">${IC.pow}</button></div></div>`)});
+  f.links.forEach(l=>{const lj=esc(JSON.stringify(l.id));
+    rows.push(`<div class="it ${l.enabled?'':'dim'}"><span class="kind link">لینک دلخواه</span><div class="t"><b>${esc(l.name)}</b><span class="note mono">${esc(l.host)} · ${esc(l.user)}</span></div>
+      <div class="acts"><button onclick='openAL(${lj})' title="ویرایش" aria-label="ویرایش">${IC.edit}</button><button onclick='toggleAL(${lj},${!l.enabled})' title="${l.enabled?'غیرفعال کردن':'فعال کردن'}" aria-label="فعال/غیرفعال" style="color:${l.enabled?'var(--ok)':'var(--mute)'}">${IC.pow}</button><button class="danger" onclick='delAL(${lj})' title="حذف" aria-label="حذف">${IC.del}</button></div></div>`)});
+  $('#flist').innerHTML=rows.join('')||'<div class="note">هنوز سروری نیست</div>';
+  const a=f.apps||{},when=p=>p.published?' · '+pday.format(new Date(p.published*1000)):'';
+  const box=(p,label,extra)=>p?`<div><b>${label}</b> <span class="mono">${esc(p.version||'?')}</span> <span class="note">${extra}${when(p)}</span></div>`
+    :`<div><b>${label}</b> <span class="note">هنوز نسخه‌ای از CI روی سرور نیامده</span></div>`;
+  $('#appsinfo').innerHTML=box(a.windows,'ویندوز',a.windows?'build '+(a.windows.build||0):'')+box(a.android,'اندروید',a.android?'code '+(a.android.code||0):'');
+}
+function openAL(id){ALID=id||null;const l=id&&FEED?FEED.links.find(x=>x.id===id):null;$('#al_t').textContent=l?'ویرایش لینک':'لینک دلخواه برای برنامه‌ها';$('#al_name').value=l?l.name:'';$('#al_link').value=l?l.link:'';openM('m_al');setTimeout(()=>$(l?'#al_name':'#al_link').focus(),60)}
+async function saveAL(){try{const body={name:$('#al_name').value,link:$('#al_link').value};if(ALID)await api('/api/applinks/'+encodeURIComponent(ALID),{method:'PATCH',body});else await api('/api/applinks',{method:'POST',body});closeM('m_al');toast('ذخیره شد ✓ برنامه‌ها چند دقیقه بعد به‌روز می‌شوند');loadFeed()}catch(e){toast(e.message)}}
+async function delAL(id){const l=FEED&&FEED.links.find(x=>x.id===id);if(!confirm('لینک «'+(l?l.name:id)+'» از همه‌ی برنامه‌ها حذف شود؟'))return;try{await api('/api/applinks/'+encodeURIComponent(id),{method:'DELETE'});toast('حذف شد');loadFeed()}catch(e){toast(e.message)}}
+async function toggleAL(id,en){try{await api('/api/applinks/'+encodeURIComponent(id),{method:'PATCH',body:{enabled:en}});toast(en?'در برنامه‌ها نمایش داده می‌شود':'از برنامه‌ها برداشته شد');loadFeed()}catch(e){toast(e.message)}}
+async function setInApps(n,v){try{await api('/api/users/'+encodeURIComponent(n),{method:'PATCH',body:{in_apps:v}});toast(v?'به برنامه‌ها اضافه شد':'از برنامه‌ها برداشته شد');refresh()}catch(e){toast(e.message)}}
 setInterval(()=>{const n=new Date();$('#clk').textContent=ptime.format(n);$('#pdate').textContent=pdate.format(n);
   const p=lastRef?Math.min(1,(Date.now()-lastRef)/10000):0;$('#tickc').style.strokeDashoffset=113.1*p},250);
 
 function renderStatus(){
   const s=ST,y=s.system||{},h=s.history||[];
-  $('#sname').textContent=s.server_name||'TrustTunnel';$('#shost').textContent=s.tt_host+(s.region?' · '+s.region:'');document.title=(s.server_name||'TrustTunnel')+' · پنل';
+  $('#sname').textContent=s.server_name||'SABI TUNNEL';$('#shost').textContent=s.tt_host+(s.region?' · '+s.region:'');document.title=(s.server_name||'SABI TUNNEL')+' · پنل';
   const ok=s.service_active&&s.metrics_ok;const p=$('#spill');p.classList.toggle('bad',!ok);p.lastElementChild.textContent=ok?'آنلاین':'مشکل در سرویس';
   if(!MAPO)MAPO=TunnelMap($('#map'),s.region,()=>RATE,34);
   $('#mapcap').textContent='ایران ⟵ '+MAPO.city+(s.region?' ('+s.region+')':'');
@@ -610,7 +663,7 @@ function renderUsers(){
     const n=esc(u.name),nj=esc(JSON.stringify(u.name));
     return `<tr class="u ${st}">
       <td data-l="کاربر"><div class="who"><div class="av" style="background:linear-gradient(135deg,hsl(${h} 90% 62%),hsl(${(h+60)%360} 85% 58%))">${esc(u.name[0]||'?')}</div><div><div class="uname mono">${n}</div><div class="note">${esc(u.note)||'—'}</div></div></div></td>
-      <td data-l="وضعیت">${bd}</td>
+      <td data-l="وضعیت">${bd}${u.enabled&&u.in_apps!==false?'<div class="inapps">● پیش‌فرض در برنامه‌ها</div>':''}</td>
       <td data-l="مصرف"><div class="use">${mini}<div><div>${fmtB(u.used)}</div><div class="note">${q?'از '+fa(u.quota_gb)+' گیگ':'بدون سقف'}</div></div></div></td>
       <td data-l="انقضا">${exp}</td>
       <td data-l="آخرین اتصال"><div>${ago(u.last_seen)}</div><div class="note mono">${esc(u.last_ip||'')}</div></td>
@@ -640,8 +693,8 @@ async function copyLink(){await copyText($('#ml_link').textContent,'لینک ک�
 function openShare(){const u=$('#ml_share').textContent;if(u)window.open(u,'_blank','noopener,noreferrer')}
 function openAdd(){['a_name','a_note'].forEach(i=>$('#'+i).value='');$('#a_quota').value=0;$('#a_days').value=30;openM('m_add');setTimeout(()=>$('#a_name').focus(),60)}
 async function addUser(){try{const u=await api('/api/users',{method:'POST',body:{name:$('#a_name').value,note:$('#a_note').value,quota_gb:+$('#a_quota').value||0,days:+$('#a_days').value||0}});closeM('m_add');toast('کاربر ساخته شد ✓');await refresh();openLink(u.name)}catch(e){toast(e.message)}}
-function openEdit(n){const u=USERS.find(x=>x.name===n);EDITU=n;$('#e_name').textContent=n;$('#e_note').value=u.note;$('#e_quota').value=u.quota_gb;$('#e_days').value=0;['e_noexp','e_reset','e_regen'].forEach(i=>$('#'+i).checked=false);openM('m_edit')}
-async function saveEdit(){try{await api('/api/users/'+encodeURIComponent(EDITU),{method:'PATCH',body:{note:$('#e_note').value,quota_gb:+$('#e_quota').value||0,add_days:+$('#e_days').value||0,clear_expiry:$('#e_noexp').checked,reset_usage:$('#e_reset').checked,regen_password:$('#e_regen').checked}});closeM('m_edit');toast('ذخیره شد ✓');refresh()}catch(e){toast(e.message)}}
+function openEdit(n){const u=USERS.find(x=>x.name===n);EDITU=n;$('#e_name').textContent=n;$('#e_note').value=u.note;$('#e_quota').value=u.quota_gb;$('#e_days').value=0;['e_noexp','e_reset','e_regen'].forEach(i=>$('#'+i).checked=false);$('#e_inapps').checked=u.in_apps!==false;openM('m_edit')}
+async function saveEdit(){try{await api('/api/users/'+encodeURIComponent(EDITU),{method:'PATCH',body:{note:$('#e_note').value,quota_gb:+$('#e_quota').value||0,add_days:+$('#e_days').value||0,clear_expiry:$('#e_noexp').checked,reset_usage:$('#e_reset').checked,regen_password:$('#e_regen').checked,in_apps:$('#e_inapps').checked}});closeM('m_edit');toast('ذخیره شد ✓');refresh()}catch(e){toast(e.message)}}
 async function toggleU(n,en){try{await api('/api/users/'+encodeURIComponent(n),{method:'PATCH',body:{enabled:en}});toast(en?'فعال شد':'غیرفعال شد');refresh()}catch(e){toast(e.message)}}
 async function delU(n){if(!confirm('کاربر '+n+' حذف شود؟'))return;try{await api('/api/users/'+encodeURIComponent(n),{method:'DELETE'});toast('حذف شد');refresh()}catch(e){toast(e.message)}}
 function openSettings(){$('#s_name').value=ST?.server_name||'';$('#s_dns').value=(ST?.dns_upstreams||[]).join(', ');$('#p_old').value=$('#p_new').value='';openM('m_set')}

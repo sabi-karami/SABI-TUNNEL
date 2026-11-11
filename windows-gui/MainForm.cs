@@ -20,8 +20,8 @@ namespace TT
     sealed class MainForm : GlassForm
     {
         const float WW = 380, HH = 664;
-        public const string GuiVersion = "3.0.2";
-        public static readonly string[] Cmds = { "show", "toggle", "connect", "disconnect", "settings", "home", "log", "import", "bypass", "servers", "addlink", "quit" };
+        public const string GuiVersion = "3.1.0";
+        public static readonly string[] Cmds = { "show", "toggle", "connect", "disconnect", "settings", "home", "log", "import", "bypass", "servers", "addlink", "sync", "quit" };
 
         readonly bool startInTray;
         readonly ClientRunner runner = new ClientRunner();
@@ -40,6 +40,16 @@ namespace TT
         int probeBusy, probeCount, pingBusy, tickCount;
         bool loading, reallyExit, balloonShown, reconnectAfterStop;
         Action afterStop;
+        readonly string[] startCmds;
+
+        // ---- default servers from the panel (feed) and app updates
+        bool feedBusy, feedManual, feedDeferred;
+        int feedFails;
+        Action<bool> feedDone;
+        Feed.Plan feedPlan;                       // fetched and prepared; applied once no dialog is open
+        DateTime feedNext = DateTime.MaxValue, startedAt = DateTime.Now, offSince = DateTime.Now;
+        UpdateInfo update;                        // a newer build, downloaded and verified
+        bool updBusy, updNotified;
 
         // ---- widgets
         readonly Page main = new Page(), settings = new Page();
@@ -49,7 +59,7 @@ namespace TT
         Toggle tKill, tAuto, tStart, tNotify;
         readonly NotifyIcon tray;
         readonly ContextMenuStrip menu;
-        readonly ToolStripMenuItem miHead, miToggle, miServers;
+        readonly ToolStripMenuItem miHead, miToggle, miServers, miUpdate;
         readonly Dictionary<string, Icon> trayIcons = new Dictionary<string, Icon>();
         readonly System.Windows.Forms.Timer tick = new System.Windows.Forms.Timer { Interval = 500 };
         readonly Queue<string> pending = new Queue<string>();
@@ -57,7 +67,7 @@ namespace TT
         LogWindow logWin;
 
         // ---- visuals
-        string profile = "TrustTunnel", host = "", user = "";
+        string profile = "SABI TUNNEL", host = "", user = "";
         int profileCount;
         string orbWord = "", orbHint = "", status = "";
         Color statusColor = Theme.Muted;
@@ -93,10 +103,11 @@ namespace TT
         float mk = 2.2f, mx0, my0;
         PointF MapP(float lat, float lon) => new PointF(mx0 + lon * mk, my0 - lat * mk);
 
-        public MainForm(bool startHidden) : base(WW, HH)
+        public MainForm(bool startHidden, string[] cmds = null) : base(WW, HH)
         {
             startInTray = startHidden;
-            Text = "TrustTunnel · Sabi VPN";
+            startCmds = cmds ?? new string[0];
+            Text = "SABI TUNNEL";
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
             Canvas.Background = PaintBackground;
             Canvas.Animate = AnimateFrame;
@@ -104,17 +115,20 @@ namespace TT
             Canvas.DragZone = p => p.Y < 56;
             Profiles.Migrate();
             Proto.Register();
+            AutoStart.Migrate();
             BuildChrome();
             BuildMain();
             BuildSettings();
             Canvas.Show(main, 0);
 
             menu = new ContextMenuStrip { RightToLeft = RightToLeft.Yes, Font = FontKit.Pt(10f), Renderer = new DarkMenuRenderer(), ShowImageMargin = false, ShowCheckMargin = false };
-            miHead = new ToolStripMenuItem("TrustTunnel") { Tag = "head" };
+            miHead = new ToolStripMenuItem("SABI TUNNEL") { Tag = "head" };
             miToggle = new ToolStripMenuItem("اتصال", null, (s, e) => ToggleConnect());
+            miUpdate = new ToolStripMenuItem("نصب نسخه‌ی جدید", null, (s, e) => { if (!ModalUp()) InstallUpdate(false); }) { Available = false };
             menu.Items.Add(miHead);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(miToggle);
+            menu.Items.Add(miUpdate);
             miServers = new ToolStripMenuItem("سرورها");
             var dd = (ToolStripDropDownMenu)miServers.DropDown;
             dd.Renderer = new DarkMenuRenderer(); dd.RightToLeft = RightToLeft.Yes; dd.ShowImageMargin = false; dd.ShowCheckMargin = false; dd.Font = menu.Font;
@@ -125,7 +139,7 @@ namespace TT
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(new ToolStripMenuItem("خروج", null, (s, e) => ExitApp()));
             foreach (ToolStripItem it in menu.Items) if (!(it is ToolStripSeparator)) it.Padding = new Padding(10, 5, 10, 5);
-            tray = new NotifyIcon { Icon = TrayIcon("off"), Text = "TrustTunnel", Visible = true, ContextMenuStrip = menu };
+            tray = new NotifyIcon { Icon = TrayIcon("off"), Text = "SABI TUNNEL", Visible = true, ContextMenuStrip = menu };
             tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ShowMain(); };
 
             runner.Line += OnLine;
@@ -159,11 +173,11 @@ namespace TT
             }
             try
             {
-                profile = "TrustTunnel"; host = ""; user = ""; profileCount = 0;
+                profile = "SABI TUNNEL"; host = ""; user = ""; profileCount = 0;
                 SetState(VState.NoConfig);
                 Snap("05-noconfig", main);
 
-                profile = "Sabi VPN"; host = "tt-oh.sahebkarami.ir"; user = "sami-pc"; profileCount = 2;
+                profile = "SABI TUNNEL · sami-pc"; host = "tt-oh.sahebkarami.ir"; user = "sami-pc"; profileCount = 2;
                 SetState(VState.Off);
                 Snap("10-off", main);
 
@@ -401,7 +415,7 @@ namespace TT
             var br = new RectangleF(WW - 20 - 30, 15, 30, 30);
             Gfx.Glow(g, new PointF(br.X + 15, br.Y + 15), 26, 26, Theme.Turq, 46);
             Glyph.Brand(g, br);
-            Art.GradText(g, "TrustTunnel", FontKit.Px(15.5f, 700), new RectangleF(WW - 20 - 30 - 9 - 160, 14, 160, 32), Al.Right, false, Theme.Violet, Theme.Turq, Theme.Mix(Theme.Turq, Color.White, 0.3f));
+            Art.GradText(g, "SABI TUNNEL", FontKit.Px(15.5f, 700), new RectangleF(WW - 20 - 30 - 9 - 160, 14, 160, 32), Al.Right, false, Theme.Violet, Theme.Turq, Theme.Mix(Theme.Turq, Color.White, 0.3f));
 
             // profile (with gold sparkles) + host chip
             var pf = FontKit.Px(19, 700);
@@ -560,7 +574,7 @@ namespace TT
             Gfx.Text(g, string.IsNullOrEmpty(user) ? "" : "کاربر: " + user, FontKit.Px(11.5f), Theme.Muted, new RectangleF(tx.X, sc.Y + 52, tx.Width, 18));
 
             Section(g, "ابزارها", 526);
-            Gfx.Text(g, "TrustTunnel client 1.1.11  ·  GUI " + GuiVersion + "  ·  Vazirmatn  ·  sabi-karami", FontKit.Px(10.5f), Theme.Dim,
+            Gfx.Text(g, "SABI TUNNEL " + GuiVersion + (Updater.Build > 0 ? " (" + Updater.Build + ")" : "") + "  ·  TrustTunnel client 1.1.11", FontKit.Px(10.5f), Theme.Dim,
                      new RectangleF(20, HH - 34, WW - 40, 18), Al.Center, false);
         }
 
@@ -797,12 +811,38 @@ namespace TT
                 case "bypass": ShowMain(); EditBypass(); break;
                 case "servers": ShowServers(); break;
                 case "addlink": { var l = Proto.TakePending(); if (l != null) ImportFlow(l); } break;
+                case "sync": SyncFeed(true); break;
                 case "quit": ExitApp(); break;
             }
         }
 
         void Startup()
         {
+            var ready = Updater.ReadReady();
+            Updater.Cleanup();
+            if (startCmds.Contains("updated")) AfterUpdate(ready);
+            else
+            {
+                update = Updater.Current();
+                ShowUpdateItem();
+                // a newer build was downloaded earlier: install it before connecting
+                if (update != null && Updater.MayAuto(update) && File.Exists(Cfg.Client) && Process.GetProcessesByName("trusttunnel_client").Length == 0)
+                {
+                    var u = update;
+                    if (!startInTray) ShowMain();
+                    SetState(Cfg.Exists ? VState.Off : VState.NoConfig, "در حال نصب نسخه‌ی " + u.Version + "…", Theme.Wait1);
+                    var t = new System.Windows.Forms.Timer { Interval = 1500 };
+                    t.Tick += (s, e) => { t.Stop(); t.Dispose(); RunInstall(u, startCmds.Contains("connect"), StartupRest); };
+                    t.Start();
+                    return;
+                }
+            }
+            StartupRest();
+        }
+
+        void StartupRest()
+        {
+            feedNext = DateTime.Now.AddSeconds(20);   // the default-server sync also runs when the start-up stops early
             if (!File.Exists(Cfg.Client) || !File.Exists(Cfg.Wintun) || !File.Exists(Cfg.Wizard))
             {
                 ShowMain();
@@ -813,7 +853,7 @@ namespace TT
             if (others.Length > 0)
             {
                 ShowMain();
-                if (Ui.Ask(this, "یک اتصال TrustTunnel دیگر از قبل در حال اجراست (مثلاً از Connect.bat).\nمتوقفش کنم تا این برنامه کنترل را بگیرد؟"))
+                if (Ui.Ask(this, "یک اتصال SABI TUNNEL دیگر از قبل در حال اجراست (مثلاً از Connect.bat).\nمتوقفش کنم تا این برنامه کنترل را بگیرد؟"))
                 {
                     Cursor = Cursors.WaitCursor;
                     foreach (var p in others) { try { ClientRunner.StopProcess(p, 6000); } catch { } }
@@ -822,9 +862,10 @@ namespace TT
                 else return;
             }
             var link = Proto.TakePending();
-            if (link != null) { ImportFlow(link); return; }
-            if (!Cfg.Exists) { ShowMain(); ImportFlow(); return; }
-            if (Ini.Get("autoconnect") == "1") Connect();
+            if (link != null) { ImportFlow(link); SyncFeed(); return; }
+            if (!Cfg.Exists) { FirstRun(); return; }
+            SyncFeed();
+            if (Ini.Get("autoconnect") == "1" || startCmds.Contains("connect")) Connect();
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -843,7 +884,7 @@ namespace TT
                 Hide();
                 if (!balloonShown)
                 {
-                    tray.ShowBalloonTip(4000, "TrustTunnel", "برنامه کنار ساعت ویندوز فعال ماند. برای خروج روی آیکون راست‌کلیک کنید.", ToolTipIcon.Info);
+                    tray.ShowBalloonTip(4000, "SABI TUNNEL", "برنامه کنار ساعت ویندوز فعال ماند. برای خروج روی آیکون راست‌کلیک کنید.", ToolTipIcon.Info);
                     balloonShown = true;
                 }
                 return;
@@ -898,7 +939,7 @@ namespace TT
                 if (string.IsNullOrWhiteSpace(name) && has) name = Cfg.Get("name");
                 user = has ? (Cfg.Get("username") ?? "") : "";
                 host = has ? (Cfg.Get("hostname") ?? "") : "";
-                profile = string.IsNullOrWhiteSpace(name) ? "TrustTunnel" : name.Trim();
+                profile = string.IsNullOrWhiteSpace(name) ? "SABI TUNNEL" : name.Trim();
                 serverIps = has ? Cfg.ServerIps() : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 serverPort = has ? Cfg.ServerPort() : 443;
                 seg.Selected = has && (Cfg.Get("upstream_protocol") ?? "").Contains("3") ? 1 : 0;
@@ -962,7 +1003,7 @@ namespace TT
             try { err = Cfg.ImportLink(link); } finally { Cursor = Cursors.Default; }
             if (err != null) { Ui.Error(this, "وارد کردن لینک ناموفق بود:\n\n" + err); return false; }
             Profile p;
-            try { p = Profiles.Add(Cfg.NewToml, DeepLink.Name(link)); }
+            try { p = Profiles.Add(Cfg.NewToml, DeepLink.Name(link)); Feed.MarkAdopted(p.Id); }
             catch (Exception ex) { Ui.Error(this, "ذخیره‌ی سرور ممکن نشد:\n" + ex.Message); return false; }
             finally { try { File.Delete(Cfg.NewToml); } catch { } }
             bool replaced = p.Id == Profiles.ActiveId;
@@ -991,7 +1032,7 @@ namespace TT
             {
                 var list = Profiles.List();
                 string act, id;
-                using (var d = new ServersDialog(list, Profiles.ActiveId, state != VState.Stopping))
+                using (var d = new ServersDialog(list, Profiles.ActiveId, state != VState.Stopping, Feed.Managed()))
                 {
                     if (d.ShowFor(this) != DialogResult.OK) return;
                     act = d.Action; id = d.Id;
@@ -1035,7 +1076,9 @@ namespace TT
         bool DeleteProfile(Profile p)
         {
             bool active = p.Id == Profiles.ActiveId;
-            if (!Ui.Ask(this, "سرور «" + p.Name + "» از فهرست حذف شود؟" + (active && runner.Running ? "\nاتصال فعلی قطع می‌شود." : ""))) return true;
+            bool def = Feed.Managed().Contains(p.Id);
+            if (!Ui.Ask(this, "سرور «" + p.Name + "» از فهرست حذف شود؟" +
+                        (def ? "\nاین سرور پیش‌فرض است و در همگام‌سازی بعدی دوباره اضافه می‌شود." : "") + (active && runner.Running ? "\nاتصال فعلی قطع می‌شود." : ""))) return true;
             Action del = () =>
             {
                 Profiles.Delete(p);
@@ -1072,12 +1115,13 @@ namespace TT
             if (dd.Count > 0) dd.Add(new ToolStripSeparator());
             dd.Add(new ToolStripMenuItem("مدیریت سرورها…", null, (s, e) => ShowServers()) { Padding = new Padding(10, 5, 10, 5) });
             dd.Add(new ToolStripMenuItem("افزودن با لینک…", null, (s, e) => ImportFlow()) { Padding = new Padding(10, 5, 10, 5) });
+            dd.Add(new ToolStripMenuItem("به‌روزرسانی سرورهای پیش‌فرض", null, (s, e) => { if (!ModalUp()) SyncFeed(true); }) { Padding = new Padding(10, 5, 10, 5) });
         }
 
         void Notify(string text, ToolTipIcon icon)
         {
             if (Ini.Get("notify", "1") == "0") return;
-            try { tray.ShowBalloonTip(3000, "TrustTunnel", text, icon); } catch { }
+            try { tray.ShowBalloonTip(3000, "SABI TUNNEL", text, icon); } catch { }
         }
 
         void EditBypass()
@@ -1128,6 +1172,189 @@ namespace TT
 
         static string LogPath => Path.Combine(Cfg.Dir, "trusttunnel_last.log");
 
+        // =============================================================== default servers (panel feed) + updates
+
+        bool Busy => runner.Running || resolving || (state != VState.Off && state != VState.NoConfig);
+
+        static bool ModalOpen()
+        {
+            var md = DarkDialog.ActiveModal;
+            return md != null && !md.IsDisposed && md.Visible;
+        }
+
+        /// <summary>A short message in the window, or next to the clock while the window is hidden.</summary>
+        void Tell(string text)
+        {
+            if (Visible && WindowState != FormWindowState.Minimized) Toast(text);
+            else try { tray.ShowBalloonTip(3000, "SABI TUNNEL", text, ToolTipIcon.Info); } catch { }
+        }
+
+        /// <summary>First start without a server: take the defaults from the panel, or ask for a link if none arrive.</summary>
+        void FirstRun()
+        {
+            ShowMain();
+            SetState(VState.NoConfig, "در حال دریافت سرورهای پیش‌فرض…", Theme.Wait1);
+            SyncFeed(false, ok =>
+            {
+                if (Cfg.Exists)
+                {
+                    Tell("سرورهای پیش‌فرض اضافه شد");
+                    if (Ini.Get("autoconnect") == "1" || startCmds.Contains("connect")) Connect();
+                }
+                else
+                {
+                    SetState(VState.NoConfig);
+                    if (!ModalOpen()) ImportFlow();
+                }
+            }, 8000);
+        }
+
+        /// <summary>Fetches the feed and runs the wizard for new / changed servers in the background, then applies the
+        /// result here. Runs at start, every 30 minutes (sooner after a failure) and right after a disconnect that held
+        /// changes back. manual = from the menu: tells the outcome.</summary>
+        void SyncFeed(bool manual = false, Action<bool> done = null, int timeoutMs = 15000)
+        {
+            if (feedBusy) { if (manual) Tell("در حال به‌روزرسانی سرورها…"); return; }
+            feedBusy = true; feedManual = manual; feedDone = done;
+            new Thread(() =>
+            {
+                Feed.Plan plan = null;
+                try
+                {
+                    var data = Feed.Fetch(timeoutMs, AddLog);
+                    if (data != null) plan = Feed.Prepare(data, AddLog);
+                }
+                catch (Exception ex) { AddLog("[feed] " + ex.Message); }
+                Post(() => { if (plan == null) FinishFeed(null); else { feedPlan = plan; ApplyFeed(); } });
+            }) { IsBackground = true, Name = "feed" }.Start();
+        }
+
+        void ApplyFeed()
+        {
+            var plan = feedPlan;
+            if (plan == null || ModalOpen()) return;          // OnTick tries again once the dialog is closed
+            feedPlan = null;
+            Feed.Result r = null;
+            try { r = Feed.Apply(plan, Busy, AddLog); }
+            catch (Exception ex) { AddLog("[feed] apply: " + ex.Message); }
+            FinishFeed(r);
+            if (r != null) StageUpdate(plan.Data);
+        }
+
+        void FinishFeed(Feed.Result r)
+        {
+            feedBusy = false;
+            feedFails = r != null ? 0 : feedFails + 1;
+            feedNext = DateTime.Now + (r != null ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(Math.Min(10, 2 * feedFails)));
+            if (r != null)
+            {
+                feedDeferred = r.Deferred > 0;
+                bool changed = r.Added + r.Updated + r.Removed > 0 || r.ActiveChanged;
+                if (changed) LoadConfigToUi();
+                AddLog("[feed] added " + r.Added + ", updated " + r.Updated + ", removed " + r.Removed +
+                       (r.Deferred > 0 ? ", " + r.Deferred + " after the disconnect" : "") + (r.Failed > 0 ? ", " + r.Failed + " failed" : ""));
+                if (feedManual) Tell(changed ? "سرورهای پیش‌فرض به‌روز شد" : r.Deferred > 0 ? "بعد از قطع اتصال به‌روز می‌شود" : "سرورهای پیش‌فرض به‌روز هستند");
+            }
+            else if (feedManual) Tell("دریافت سرورهای پیش‌فرض ممکن نشد");
+            var d = feedDone;
+            feedDone = null; feedManual = false;
+            d?.Invoke(r != null);
+        }
+
+        void ShowUpdateItem()
+        {
+            miUpdate.Text = update == null ? "نصب نسخه‌ی جدید" : "نصب نسخه‌ی جدید  " + update.Version;
+            miUpdate.Available = update != null;
+        }
+
+        void StageUpdate(FeedData d)
+        {
+            var w = d.Windows;
+            if (updBusy || !Updater.Enabled || w == null || w.Build <= Updater.Build || (update != null && update.Build >= w.Build)) return;
+            updBusy = true;
+            new Thread(() =>
+            {
+                UpdateInfo u = null;
+                try { u = Updater.Stage(d, AddLog); } catch (Exception ex) { AddLog("[update] " + ex.Message); }
+                Post(() =>
+                {
+                    updBusy = false;
+                    if (u == null) return;
+                    update = u;
+                    ShowUpdateItem();
+                    AddLog("[update] " + u.Version + " (build " + u.Build + ") downloaded and verified");
+                    if (Busy && !updNotified) { updNotified = true; Notify("نسخه‌ی " + u.Version + " دانلود شد و وقتی از کامپیوتر استفاده نمی‌کنید خودکار نصب می‌شود؛ برای نصب فوری: منوی برنامه ← نصب نسخه‌ی جدید", ToolTipIcon.Info); }
+                });
+            }) { IsBackground = true, Name = "update" }.Start();
+        }
+
+        /// <summary>Installs a downloaded build on its own once the app has been idle for a minute: disconnected, no
+        /// dialog open and none of its windows in use.</summary>
+        void MaybeInstallUpdate()
+        {
+            if (update == null || reallyExit || !Updater.MayAuto(update) || ModalOpen() || ActiveForm != null) return;
+            var now = DateTime.Now;
+            if ((now - startedAt).TotalSeconds < 60) return;
+            if (Busy)
+            {
+                // connected: only while nobody uses the computer (20 minutes without keyboard / mouse input); the
+                // tunnel is closed for the few seconds of the update and comes back by itself
+                if (state != VState.On || (now - connectedAt).TotalMinutes < 5 || Updater.UserIdle().TotalMinutes < 20) return;
+                var u = update;
+                AddLog("[update] the computer is idle: installing " + u.Version + " and reconnecting");
+                reconnectAfterStop = false;
+                Disconnect(() => RunInstall(u, true, () => Connect()));
+                return;
+            }
+            if ((now - offSince).TotalSeconds < 60) return;
+            InstallUpdate(true);
+        }
+
+        /// <summary>auto = from MaybeInstallUpdate; otherwise from the menu (a running tunnel is closed first and comes
+        /// back after the update).</summary>
+        void InstallUpdate(bool auto)
+        {
+            var u = update;
+            if (u == null || reallyExit) return;
+            if (Busy)
+            {
+                if (auto || state == VState.Stopping) return;
+                if (!Ui.Ask(this, "برای نصب نسخه‌ی " + u.Version + " اتصال چند ثانیه قطع می‌شود و بعد از نصب دوباره برقرار می‌شود.\nادامه می‌دهید؟")) return;
+                reconnectAfterStop = false;
+                Disconnect(() => RunInstall(u, true, () => Connect()));
+                return;
+            }
+            RunInstall(u, false, null);
+        }
+
+        void RunInstall(UpdateInfo u, bool reconnect, Action onFail)
+        {
+            AddLog("[update] installing " + u.Version + " (build " + u.Build + ", " + u.Kind + ")");
+            var err = Updater.Install(u, !Visible, reconnect);
+            if (err == null) { ExitApp(); return; }
+            AddLog("[update] " + err);
+            update = Updater.Current();
+            ShowUpdateItem();
+            SetState(state);
+            onFail?.Invoke();
+        }
+
+        void AfterUpdate(UpdateInfo staged)
+        {
+            if (staged == null || Updater.Build >= staged.Build)
+            {
+                Updater.Succeeded();
+                AddLog("[update] now running " + GuiVersion + " build " + Updater.Build);
+                Tell("SABI TUNNEL به نسخه‌ی " + GuiVersion + " به‌روز شد");
+            }
+            else
+            {
+                AddLog("[update] build " + staged.Build + " did not install (still " + Updater.Build + "); see update\\setup-" + staged.Build + ".log");
+                update = Updater.Current();
+                ShowUpdateItem();
+            }
+        }
+
         // =============================================================== connect / disconnect
 
         void ToggleConnect()
@@ -1153,7 +1380,7 @@ namespace TT
             gaveUp = clientPinged = clientPingFailed = false; diagSeq++;
             connectStart = DateTime.Now; lastProbe = DateTime.MinValue; lastPing = DateTime.MinValue;
             ResetStats();
-            try { File.WriteAllText(LogPath, "TrustTunnel GUI " + GuiVersion + " log " + DateTime.Now.ToString("s") + "\r\n"); } catch { }
+            try { File.WriteAllText(LogPath, "SABI TUNNEL " + GuiVersion + (Updater.Build > 0 ? " build " + Updater.Build : "") + " log " + DateTime.Now.ToString("s") + "\r\n"); } catch { }
             var addrs = Cfg.Addresses();
             runAddrs = addrs;
             bool names = addrs.Any(a => { Resolver.Split(a, out var h, out _); return h.Length > 0 && !Resolver.IsIp(h); });
@@ -1404,11 +1631,17 @@ namespace TT
             {
                 ProbeIp(true);   // fallback if the client's log line is buffered
             }
+            if (tickCount % 2 == 0)
+            {
+                if (feedPlan != null) ApplyFeed();
+                else if (!feedBusy && now >= feedNext) SyncFeed();
+            }
+            if (tickCount % 20 == 0) MaybeInstallUpdate();
         }
 
         void UpdateTrayText()
         {
-            var tip = "TrustTunnel · وصل" + (statsOk ? "  ↓" + Gfx.Bytes(rateRx, true) + "  ↑" + Gfx.Bytes(rateTx, true) : "");
+            var tip = "SABI TUNNEL · وصل" + (statsOk ? "  ↓" + Gfx.Bytes(rateRx, true) + "  ↑" + Gfx.Bytes(rateTx, true) : "");
             try { tray.Text = tip.Length > 63 ? tip.Substring(0, 63) : tip; } catch { }
         }
 
@@ -1499,7 +1732,7 @@ namespace TT
                 try
                 {
                     var rq = (HttpWebRequest)WebRequest.Create("https://api.ipify.org");
-                    rq.Timeout = 6000; rq.ReadWriteTimeout = 6000; rq.Proxy = null; rq.UserAgent = "TrustTunnelGUI";
+                    rq.Timeout = 6000; rq.ReadWriteTimeout = 6000; rq.Proxy = null; rq.UserAgent = "SabiTunnel";
                     rq.KeepAlive = false; rq.CachePolicy = new System.Net.Cache.RequestCachePolicy(System.Net.Cache.RequestCacheLevel.NoCacheNoStore);
                     using (var rs = rq.GetResponse())
                     using (var sr = new StreamReader(rs.GetResponseStream())) ip = sr.ReadToEnd().Trim();
@@ -1522,6 +1755,13 @@ namespace TT
         {
             var prev = state;
             state = s;
+            bool idle = s == VState.Off || s == VState.NoConfig, wasIdle = prev == VState.Off || prev == VState.NoConfig;
+            if (idle && !wasIdle)
+            {
+                offSince = DateTime.Now;
+                if (feedDeferred) { feedDeferred = false; if (feedNext != DateTime.MaxValue) feedNext = DateTime.Now.AddSeconds(3); }
+            }
+            if (s == VState.On && prev != VState.On && feedFails > 0 && !feedBusy && feedNext != DateTime.MaxValue) feedNext = DateTime.Now.AddSeconds(5);
             if (prev == VState.On && s == VState.Reconnecting && !Visible) Notify("اتصال موقتاً قطع شد؛ در حال اتصال مجدد…", ToolTipIcon.Warning);
             Color n1, n2;
             bool spin = false;
@@ -1557,7 +1797,7 @@ namespace TT
             btnNewLink.Enabled = s != VState.Stopping;
 
             tray.Icon = TrayIcon(s == VState.On ? "on" : (s == VState.Off || s == VState.NoConfig ? "off" : "wait"));
-            var tip = "TrustTunnel · " + orbWord;
+            var tip = "SABI TUNNEL · " + orbWord;
             try { tray.Text = tip.Length > 63 ? tip.Substring(0, 63) : tip; } catch { }
             miHead.Text = profile + "  ·  " + orbWord;
             miToggle.Text = (s == VState.Off || s == VState.NoConfig) ? "اتصال" : "قطع اتصال";

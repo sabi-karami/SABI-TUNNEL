@@ -9,6 +9,7 @@ import 'package:trusttunnel/feature/server/servers/controller/servers_states.dar
 import 'package:trusttunnel/feature/server/servers/widget/scope/servers_scope_aspect.dart';
 import 'package:trusttunnel/feature/server/servers/widget/scope/servers_scope_controller.dart';
 import 'package:trusttunnel/feature/settings/launch_and_connection/controller/auto_connect_on_launch_controller.dart';
+import 'package:trusttunnel/sabi/sabi_sync.dart';
 
 /// {@template products_scope_template}
 /// Provides Products controller to the widget tree
@@ -40,6 +41,7 @@ class ServersScope extends StatefulWidget {
 class _ServersScopeState extends State<ServersScope> {
   late final ServersController _controller;
   late final AutoConnectOnLaunchSettingsController _autoConnectOnLaunchSettingsController;
+  late final SabiSync _sabi;
 
   @override
   void initState() {
@@ -52,6 +54,14 @@ class _ServersScopeState extends State<ServersScope> {
     );
 
     _controller.fetchServers();
+
+    // SABI TUNNEL: the panel's default servers (and app updates)
+    _sabi = SabiSync(
+      servers: repositoryFactory.serverRepository,
+      deepLinks: repositoryFactory.deepLinkRepository,
+      vpn: repositoryFactory.vpnRepository,
+      onChanged: _controller.fetchServers,
+    )..start();
   }
 
   @override
@@ -72,6 +82,7 @@ class _ServersScopeState extends State<ServersScope> {
 
   @override
   void dispose() {
+    _sabi.dispose();
     _autoConnectOnLaunchSettingsController.dispose();
     _controller.dispose();
     super.dispose();

@@ -73,11 +73,24 @@ namespace TT
         {
             if (!Exists) return;
             var t = File.ReadAllText(Toml);
+            var n = SetIn(t, key, literal, addIfMissing);
+            if (n != t) File.WriteAllText(Toml, n, Utf8);
+        }
+
+        /// <summary>Set() on TOML text: replaces the first "key = …" line, or puts it at the top (addIfMissing).</summary>
+        public static string SetIn(string t, string key, string literal, bool addIfMissing = false)
+        {
             var re = new Regex("(?m)^[ \\t]*" + Regex.Escape(key) + "[ \\t]*=[^\\r\\n]*");
-            if (re.IsMatch(t)) t = re.Replace(t, m => key + " = " + literal, 1);
-            else if (addIfMissing) t = key + " = " + literal + (t.Contains("\r\n") ? "\r\n" : "\n") + t;
-            else return;
-            File.WriteAllText(Toml, t, Utf8);
+            if (re.IsMatch(t)) return re.Replace(t, m => key + " = " + literal, 1);
+            return addIfMissing ? key + " = " + literal + (t.Contains("\r\n") ? "\r\n" : "\n") + t : t;
+        }
+
+        /// <summary>The literal after "key =" (quotes kept) in any client TOML file; null if the key is absent.</summary>
+        public static string GetRaw(string path, string key)
+        {
+            if (!File.Exists(path)) return null;
+            var m = Regex.Match(File.ReadAllText(path), "(?m)^[ \\t]*" + Regex.Escape(key) + "[ \\t]*=[ \\t]*([^\\r\\n]*)");
+            return m.Success ? m.Groups[1].Value.Trim() : null;
         }
 
         public static List<string> Addresses()
@@ -124,15 +137,18 @@ namespace TT
             Set("exclusions", "[" + string.Join(", ", items) + "]");
         }
 
-        /// <summary>Imports a tt:// deep link with the official setup_wizard. Returns null on success or an error text.</summary>
-        public static string ImportLink(string link)
+        /// <summary>Imports a tt:// deep link with the official setup_wizard into NewToml. Returns null on success or an error text.</summary>
+        public static string ImportLink(string link) => ImportLink(link, NewToml);
+
+        /// <summary>Same, writing the settings to dest (the default-server sync uses its own files).</summary>
+        public static string ImportLink(string link, string dest)
         {
             link = DeepLink.Normalize(link);
             if (!link.StartsWith("tt://", StringComparison.OrdinalIgnoreCase)) return "لینک باید با tt:// شروع شود.";
             if (!Regex.IsMatch(link, "^tt://\\?[A-Za-z0-9_\\-=]+$")) return "لینک ناقص یا خراب است؛ کامل کپی کنید.";
             var bad = DeepLink.Check(link); if (bad != null) return bad;
             if (!File.Exists(Wizard)) return "فایل setup_wizard.exe کنار برنامه نیست.";
-            var tmp = NewToml;
+            var tmp = dest;
             try { File.Delete(tmp); } catch { }
             var psi = new ProcessStartInfo(Wizard, "--mode non-interactive --deeplink \"" + link + "\" --settings \"" + tmp + "\"")
             {
@@ -151,7 +167,7 @@ namespace TT
                     return msg.Length > 500 ? msg.Substring(msg.Length - 500) : msg;
                 }
             }
-            return null;   // the new settings are left in NewToml; Profiles.Add() stores them
+            return null;   // the new settings are left in dest; Profiles.Add() / Feed.Apply() store them
         }
     }
 

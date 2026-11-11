@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="docs/hero.svg" alt="TrustTunnel · Sabi VPN" width="100%">
+<img src="docs/hero.svg" alt="SABI TUNNEL" width="100%">
 
 <br>
 
-<img alt="version" src="https://img.shields.io/badge/version-3.0.2-8b5cf6?style=for-the-badge&labelColor=0d102c">
+<img alt="version" src="https://img.shields.io/badge/version-3.1.0-8b5cf6?style=for-the-badge&labelColor=0d102c">
 <img alt="protocol" src="https://img.shields.io/badge/HTTP%2F2%20%C2%B7%20HTTP%2F3-QUIC-2de2e6?style=for-the-badge&labelColor=0d102c">
 <img alt="platforms" src="https://img.shields.io/badge/Android%20%C2%B7%20iOS%20%C2%B7%20Windows-ready-f5c76b?style=for-the-badge&labelColor=0d102c">
 <img alt="cloud" src="https://img.shields.io/badge/AWS%20EC2-Cloudflare%20DNS-ff4fd8?style=for-the-badge&labelColor=0d102c">
@@ -15,6 +15,12 @@
 <div dir="rtl">
 
 سرور شخصی VPN بر پایه‌ی پروتکل متن‌باز [TrustTunnel](https://github.com/TrustTunnel/TrustTunnel) (ساخت AdGuard) به همراه **پنل مدیریت وب فارسی**، **صفحه‌ی اشتراک برای هر کاربر** و **برنامه‌های ویندوز و اندروید** با یک نشان و یک طراحی؛ با یک دستور روی AWS EC2 و Cloudflare DNS. ترافیک از بیرون دقیقاً شبیه یک سایت HTTPS معمولی است.
+
+#### SABI TUNNEL: سرورهای پیش‌فرض و به‌روزرسانی خودکار
+
+- هر کاربر فعال پنل که گزینه‌ی «در برنامه‌ها» برایش روشن است (به‌علاوه‌ی لینک‌های tt:// که مدیر اضافه می‌کند) سرور پیش‌فرض همه‌ی برنامه‌هاست و با فید `/app/v1/feed` خودکار همگام می‌شود.
+- با هر push به main، GitHub Actions برنامه‌ها را می‌سازد و از راه `sabi-deploy` روی سرور منتشر می‌کند؛ برنامه‌ها خودشان به‌روز می‌شوند. تغییرات `panel/` هم خودکار روی سرور مستقر می‌شود.
+- نام workflowها را عوض نکنید؛ شماره‌ی اجرا (run_number) شماره‌ی ساخت برنامه است.
 
 #### نمای پنل مدیریت
 

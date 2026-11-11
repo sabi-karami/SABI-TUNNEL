@@ -45,7 +45,16 @@ namespace TT
 
         public static Profile Active => List().FirstOrDefault(p => p.Id == ActiveId);
 
-        static string NewId() => DateTime.UtcNow.ToString("yyMMddHHmmssfff");
+        /// <summary>A new saved-server id (time based, unique in the folder).</summary>
+        public static string NewId()
+        {
+            var t = DateTime.UtcNow;
+            for (int i = 0; ; i++)
+            {
+                var id = t.AddMilliseconds(i).ToString("yyMMddHHmmssfff");
+                if (!File.Exists(Path.Combine(Dir, id + ".toml")) && !File.Exists(Path.Combine(Dir, id + ".name"))) return id;
+            }
+        }
 
         /// <summary>First run of v2.1: turn the existing single config into the first saved server.</summary>
         public static void Migrate()
@@ -145,7 +154,7 @@ namespace TT
                     if (k != null && string.Equals(k.GetValue("") as string, cmd, StringComparison.OrdinalIgnoreCase)) return;
                 using (var k = Registry.CurrentUser.CreateSubKey(@"Software\Classes\tt"))
                 {
-                    k.SetValue("", "URL:TrustTunnel link");
+                    k.SetValue("", "URL:SABI TUNNEL link");
                     k.SetValue("URL Protocol", "");
                 }
                 using (var k = Registry.CurrentUser.CreateSubKey(@"Software\Classes\tt\DefaultIcon")) k.SetValue("", "\"" + exe + "\",0");

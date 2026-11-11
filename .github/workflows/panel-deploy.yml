@@ -1,0 +1,62 @@
+name: Panel deploy
+
+# Ships the web panel (panel/) and the server's deploy script to the server. The panel is backed up, replaced and
+# health-checked there by sabi-deploy, which rolls it back by itself when the new version does not come up.
+
+on:
+  push:
+    branches: [main]
+    paths: ['panel/**', 'server/sabi-deploy.sh', '.github/workflows/panel-deploy.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: sabi-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the code
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import ast, pathlib
+          for f in pathlib.Path("panel").rglob("*.py"):
+              ast.parse(f.read_text(encoding="utf-8"), str(f))
+              print("ok", f)
+          PY
+          bash -n server/sabi-deploy.sh
+
+      - name: Send to the server
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_SSH_KEY" ] || [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_KNOWN_HOSTS" ]; then
+            echo "::error::DEPLOY_SSH_KEY / DEPLOY_HOST / DEPLOY_KNOWN_HOSTS are not set"; exit 1
+          fi
+          mkdir -p bundle/server
+          rsync -a --exclude '__pycache__' --exclude '*.pyc' panel/ bundle/panel/
+          cp server/sabi-deploy.sh bundle/server/
+          tar -C bundle -czf bundle.tgz panel server
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/sabi_deploy && chmod 600 ~/.ssh/sabi_deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/sabi_known_hosts
+          ssh -i ~/.ssh/sabi_deploy -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/sabi_known_hosts" -o ConnectTimeout=20 -o ServerAliveInterval=15 \
+            "sabi-ci@$DEPLOY_HOST" < bundle.tgz
+
+      - name: Check the live feed
+        run: |
+          for u in https://sabitunnel.sahebkarami.ir/app/v1/ping https://ttpanel-oh.sahebkarami.ir/app/v1/ping; do
+            printf '%s -> ' "$u"; curl -fsS -m 15 "$u" || echo "(not reachable from GitHub)"; echo
+          done

@@ -18,7 +18,7 @@ class AboutScreen extends StatelessWidget {
       body: FutureBuilder<String>(
         future: _getPackageVersion(),
         builder: (context, snapshot) => DefaultPage.responsive(
-          title: 'TrustTunnel',
+          title: 'SABI TUNNEL',
           descriptionText: snapshot.data,
           imagePath: AssetImages.about,
           desktopImagePath: AssetImages.aboutDesktop,

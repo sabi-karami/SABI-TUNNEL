@@ -234,7 +234,7 @@ class _Brand extends StatelessWidget {
         blendMode: BlendMode.srcIn,
         shaderCallback: (bounds) => Firuze.auroraGradient.createShader(bounds),
         child: Text(
-          'TrustTunnel',
+          'SABI TUNNEL',
           textDirection: TextDirection.ltr,
           style: context.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
         ),
